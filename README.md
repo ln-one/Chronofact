@@ -73,3 +73,37 @@ delivery surface. It should not leak into the Chronestia core model.
 - Promote large modules to independent repositories when needed
 - Keep reusable assets in `configs/`, `deployments/`, `scripts/`, and `docs/`
 - Use the root only for cross-cutting concerns and integration surfaces
+
+## Chronestia Access Modes
+
+Chronestia stays private. Chronofact should support two access modes in the same
+repository:
+
+- default/team mode: pull a published Chronestia image and call it over Docker/API
+- maintainer mode: initialize the private `services/chronestia` submodule and
+  switch that service to a local source build automatically
+
+Collaborators should not need private kernel source access to develop or demo
+Chronofact.
+
+Team mode:
+
+```bash
+python3 ./scripts/compose_smart.py up -d chronestia
+```
+
+Maintainer mode:
+
+```bash
+git submodule update --init --recursive services/chronestia
+python3 ./scripts/compose_smart.py up -d chronestia
+```
+
+Check the active mode with:
+
+```bash
+python3 ./scripts/compose_smart.py status
+```
+
+If you publish a different tag, override `CHRONESTIA_IMAGE` before starting the
+service.

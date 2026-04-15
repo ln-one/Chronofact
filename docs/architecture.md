@@ -69,3 +69,12 @@ Chronestia.
 Chronofact translates teaching-file versions into generic witness facts. It
 should not copy Chronestia's internal model or bypass the Chronestia API once
 that service exists.
+
+## Private Source Access
+
+Chronestia source access is maintainer-only.
+
+- the default Chronofact integration mode uses a published Chronestia image
+- normal collaborators should not need the `services/chronestia` source tree
+- maintainer machines may initialize the private submodule and build Chronestia locally
+- Chronofact should document the Docker/API contract, not private kernel implementation details

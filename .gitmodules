@@ -1,3 +1,4 @@
 [submodule "services/chronestia"]
 	path = services/chronestia
-	url = /Users/ln1/Projects/Chronestia
+	url = git@github.com:ln-one/Chronestia.git
+	branch = main

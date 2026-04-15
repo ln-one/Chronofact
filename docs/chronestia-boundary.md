@@ -56,3 +56,12 @@ Chronofact -> Chronestia Docker/API
 ```
 
 Chronestia must not depend on Chronofact.
+
+## Access Policy
+
+Chronestia remains a private kernel repository.
+
+- the default Chronofact workflow consumes a published Chronestia image
+- only the private maintainer should initialize `services/chronestia`
+- collaborators must be able to run Chronofact integration flows without seeing Chronestia source code
+- Chronofact docs should describe Chronestia's external contract only

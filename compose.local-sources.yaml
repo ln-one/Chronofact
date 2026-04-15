@@ -1,0 +1,6 @@
+services:
+  chronestia:
+    build:
+      context: ./services/chronestia
+      dockerfile: Dockerfile
+    image: chronestia:local

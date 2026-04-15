@@ -10,3 +10,15 @@ services:
     tty: true
     stdin_open: true
     command: ["bash"]
+
+  chronestia:
+    image: ${CHRONESTIA_IMAGE:-ghcr.io/ln-one/chronestia:main}
+    container_name: chronofact-chronestia
+    restart: unless-stopped
+    environment:
+      CHRONESTIA_ADDR: :8080
+      CHRONESTIA_DB_PATH: /app/data/chronestia.db
+    ports:
+      - "${CHRONESTIA_PORT:-8080}:8080"
+    volumes:
+      - ./.cache/chronestia:/app/data
