@@ -1,0 +1,56 @@
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Archives / temp
+*.tmp
+*.temp
+*.bak
+tmp/
+.cache/
+
+# Build outputs
+dist/
+build/
+bin/
+out/
+coverage/
+
+# Go
+*.test
+*.prof
+vendor/
+
+# Node / frontend tooling
+node_modules/
+.pnpm-store/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+.docker/
+
+# Terraform / infra
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Generated local files
+*.local

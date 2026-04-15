@@ -1,0 +1,11 @@
+.git
+.gitmodules
+.github
+.cache
+tmp
+dist
+build
+bin
+coverage
+node_modules
+vendor

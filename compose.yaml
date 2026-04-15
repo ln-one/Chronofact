@@ -1,0 +1,12 @@
+services:
+  workspace:
+    build:
+      context: .
+      dockerfile: docker/go-workspace.Dockerfile
+    container_name: chronofact-workspace
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    tty: true
+    stdin_open: true
+    command: ["bash"]
