@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 COMPOSE_SMART := python3 ./scripts/compose_smart.py
 
-.PHONY: help init fmt lint clean up down shell status chronestia-up chronestia-down
+.PHONY: help init fmt lint clean up down shell status chronestia-up chronestia-down chronestia-source
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*## "}; /^[a-zA-Z0-9_-]+:.*## / {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -37,6 +37,9 @@ chronestia-up: init ## Start Chronestia in image mode or local-source mode
 
 chronestia-down: ## Stop Chronestia
 	@$(COMPOSE_SMART) down
+
+chronestia-source: ## Initialize the private Chronestia submodule for maintainer development
+	@git submodule update --init --recursive services/chronestia
 
 down: ## Stop the local development workspace
 	@docker compose down --remove-orphans

@@ -83,6 +83,11 @@ repository:
 - maintainer mode: initialize the private `services/chronestia` submodule and
   switch that service to a local source build automatically
 
+`services/chronestia` is already attached to this repository as a Git submodule.
+That means the root repo keeps a stable pointer to the current Chronestia commit
+without exposing the private implementation to collaborators who do not have
+access.
+
 Collaborators should not need private kernel source access to develop or demo
 Chronofact.
 
@@ -95,8 +100,14 @@ python3 ./scripts/compose_smart.py up -d chronestia
 Maintainer mode:
 
 ```bash
-git submodule update --init --recursive services/chronestia
+make chronestia-source
 python3 ./scripts/compose_smart.py up -d chronestia
+```
+
+Fresh clone with private access:
+
+```bash
+git clone --recurse-submodules git@github.com:ln-one/Chronofact.git
 ```
 
 Check the active mode with:
