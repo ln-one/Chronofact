@@ -1,0 +1,3 @@
+[submodule "services/chronestia"]
+	path = services/chronestia
+	url = /Users/ln1/Projects/Chronestia
