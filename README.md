@@ -1,13 +1,16 @@
 # Chronofact
 
-Chronofact is the blockchain course project shell for teaching-file notarization
-and version tracking.
+Chronofact is the blockchain course project shell for trustworthy experiment
+assets, delivery records, and versioned evidence chains.
 
-It focuses on electronic teaching files such as lab reports, assignments, and
-exams. The system uses an on-chain/off-chain split: original files and business
-data stay off-chain, while file digests, submitter identity, submitted time,
-version numbers, and previous-version links are anchored through a blockchain
-environment.
+It should not be pitched as a narrow teaching-file upload tool. Reports,
+assignments, code snapshots, result screenshots, logs, release bundles, and
+other experiment artifacts are all valid inputs to the same evidence workflow.
+
+The system uses an on-chain/off-chain split: original files and business data
+stay off-chain, while digests, issuer references, registration time, version
+links, receipt data, and verification state are anchored or recorded through a
+blockchain-facing environment.
 
 Chronofact may integrate Chronestia as a private reusable witness kernel.
 Chronofact owns the course-facing application and demo workflow. Chronestia owns
@@ -17,15 +20,33 @@ the clean generic fact witnessing model.
 
 The minimum product flow is:
 
-1. A user uploads a teaching file.
-2. Chronofact stores the original file off-chain.
-3. Chronofact computes a stable file digest.
-4. Chronofact creates a new file version record.
+1. A user registers an experiment asset or delivery artifact.
+2. Chronofact stores the original asset off-chain.
+3. Chronofact computes a stable digest.
+4. Chronofact creates a new asset-version record.
 5. Chronofact records or anchors the corresponding fact through Chronestia or a
-   local chain adapter.
-6. Later verification recomputes the file digest and compares it with the
-   recorded proof.
-7. A version chain shows how later submissions relate to previous versions.
+   demo-scoped chain adapter.
+6. Later verification recomputes the digest and compares it with the recorded
+   proof and receipt.
+7. A version chain shows how later submissions, revisions, and derived outputs
+   relate to previous versions.
+
+## AI Layer
+
+Chronofact may add an AI explanation layer on top of Chronestia. The AI layer
+does not replace hashes, receipts, proofs, or verification. Its only job is to
+turn structured evidence into reviewer-facing explanations:
+
+- explain a receipt in human language
+- summarize an asset history trace
+- highlight structured risks and next checks
+
+This keeps the project's “AI + blockchain” story honest:
+
+- blockchain and Chronestia provide the trust surface
+- AI provides explanation, navigation, and risk narration
+
+The AI layer must remain outside Chronestia's witness kernel.
 
 ## Course Blockchain Environment
 
@@ -62,10 +83,11 @@ delivery surface. It should not leak into the Chronestia core model.
 - Low coupling between modules
 - Root owns shared conventions, not business logic
 - Services can live directly under `services/` or be attached later as submodules
-- Keep course demo, teaching-file business, and blockchain environment setup in
-  Chronofact.
+- Keep course demo, experiment-asset business, and blockchain environment setup
+  in Chronofact.
 - Keep reusable fact witnessing semantics behind the Chronestia API boundary.
 - Do not duplicate Chronestia internals in Chronofact.
+- Do not present AI as a trust root or automatic judge.
 
 ## Extension
 
@@ -118,3 +140,9 @@ python3 ./scripts/compose_smart.py status
 
 If you publish a different tag, override `CHRONESTIA_IMAGE` before starting the
 service.
+
+## Design Docs
+
+- [docs/architecture.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/architecture.md)
+- [docs/chronestia-boundary.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/chronestia-boundary.md)
+- [docs/ai-explanation-layer.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/ai-explanation-layer.md)

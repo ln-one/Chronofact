@@ -4,13 +4,15 @@ Chronofact is the course project. Chronestia is the private reusable kernel.
 
 ## Chronofact Owns
 
-- teaching-file business semantics
-- users, courses, assignments, reports, exams, and submissions
-- original file storage
-- file version lists and verification pages
+- experiment-asset business semantics
+- users, courses, reports, code snapshots, logs, result bundles, and other
+  course-facing assets
+- original asset storage
+- asset version lists, verification pages, and explanation pages
 - Ethereum course environment setup
 - Remix, Ganache, MetaMask, Faucet, and demo walkthroughs
 - UI and presentation-specific shortcuts
+- AI explanation and reviewer-facing summary logic
 
 ## Chronestia Owns
 
@@ -23,14 +25,14 @@ Chronofact is the course project. Chronestia is the private reusable kernel.
 
 ## Data Translation
 
-Chronofact should translate a file version into a Chronestia fact instead of
-leaking teaching-file fields into the kernel.
+Chronofact should translate an asset version into a Chronestia fact instead of
+leaking product-specific fields into the kernel.
 
 ```text
-Chronofact file version
-  file_id
-  file_type
-  course_id
+Chronofact asset version
+  asset_id
+  asset_type
+  workspace_id
   submitter_id
   version_no
   previous_version_id
@@ -38,14 +40,25 @@ Chronofact file version
 
 Chronestia fact
   subject.namespace = chronofact
-  subject.type = teaching_file
-  subject.id = file_id
-  fact.kind = version_submitted
+  subject.type = experiment_asset
+  subject.id = asset_id
+  fact.kind = registered / revised / derived_from / published
   fact.sequence = version_no
   fact.previous_fact_id = previous_fact_id
   evidence.digest_algorithm = sha256
-  evidence.digest = file_digest
+  evidence.digest = asset_digest
 ```
+
+AI explanation consumes Chronestia outputs after this translation step:
+
+```text
+Chronestia fact / registration / receipt / verification
+  -> Chronofact AI explanation layer
+  -> human-readable summary, risks, and next checks
+```
+
+The AI layer must not call itself the proof source. It is only a structured
+interpreter of registered evidence.
 
 ## Dependency Rule
 
