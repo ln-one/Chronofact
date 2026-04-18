@@ -2,115 +2,79 @@
 
 ## Root Responsibility
 
-The root repository defines shared conventions, integration boundaries, and
-lightweight operational assets for the blockchain course project.
+Chronofact is the application and integration shell.
 
-Chronofact is allowed to contain course-facing application logic, demo scripts,
-and blockchain environment setup. It should still keep those concerns in
-separate modules instead of accumulating unrelated business logic at the root.
+The root repository defines:
 
-## Product Boundary
+- product-facing workflow boundaries
+- shared environment wiring
+- deployment and local development coordination
+- service composition rules
 
-Chronofact owns the course-facing experiment asset and delivery system:
+The root should not absorb the internals of reusable services.
 
-- reports, assignments, exams, code snapshots, logs, screenshots, result
-  bundles, and other experiment assets
-- upload and off-chain asset storage
-- digest calculation
-- asset version records and previous-version links
-- verification and reviewer-facing explanation workflows
-- course demo UI and scripts
-- Ethereum development environment setup required by the course
+## Service Boundaries
 
-Chronofact does not own the reusable witness kernel if Chronestia is available.
-It should consume Chronestia through Docker/API boundaries.
+Chronofact currently composes three reusable engines:
+
+- `Chronestia`
+  - owns subject / fact / evidence / receipt / trace semantics
+  - does not own product identity or file-ingest workflow
+- `Limora`
+  - owns authentication, session authority, organizations, and memberships
+  - does not own Chronofact product policy
+- `Dualweave`
+  - owns upload persistence and provider delivery orchestration
+  - does not own Chronofact asset meaning or witness semantics
+
+Chronofact itself owns:
+
+- product-facing asset and submission flows
+- mapping product actions into witness facts
+- digest / version policy at the application layer
+- reviewer-facing verification and history views
+- environment composition for local development and demos
+
+## Dependency Rule
+
+The intended composition direction is:
 
 ```text
 Chronofact
-  experiment asset business
-  course demo environment
-  AI explanation layer
-  Ethereum/Ganache/MetaMask/Remix setup
-  calls Chronestia API
-
-Chronestia
-  Subject / Fact / Evidence / Anchor / Receipt / Trace
-  reusable across future projects
+  -> Limora
+  -> Dualweave
+  -> Chronestia
 ```
 
-Chronofact should be pitched as a trustworthy experiment-asset and delivery
-chain, not as a narrow teaching-file upload tool.
+Meaning:
 
-## Module Boundaries
+- identity is resolved through `Limora`
+- file intake and persistence are delegated to `Dualweave`
+- fact recording and trace history are delegated to `Chronestia`
 
-- `services/` holds independent services or future submodules
-- `contracts/` holds contract-facing or chain-facing modules
-- `configs/` holds shared configuration templates
-- `deployments/` holds deployment-level assets only
-- `scripts/` holds small root-level helpers
+Chronestia must not depend on Chronofact.
+Limora must not depend on Chronofact.
+Dualweave must not depend on Chronofact.
+
+Chronofact may adapt their outputs into product-specific screens and workflows.
+
+## Typical Flow
+
+The current target system behavior is:
+
+1. authenticate a user and establish identity context
+2. accept an asset or submission
+3. persist the uploaded material through the upload engine
+4. compute or confirm a stable digest and version link
+5. record a fact with evidence in the witness engine
+6. return receipt, trace, and product-specific verification state
+
+This keeps file truth, identity truth, and witness truth separated while still
+forming a coherent application flow.
 
 ## Extension Model
 
-- Start small modules inside this repository
-- Extract to separate repositories when ownership or release cadence diverges
-- Reattach extracted modules as submodules if the root still needs a stable integration point
-- Keep shared standards in the root, keep implementation details inside modules
-
-## First Implementation Direction
-
-The initial course implementation should prefer the Ethereum option:
-
-- Remix for simple contract inspection and classroom demonstration
-- Ganache as the local chain
-- MetaMask for account connection and transaction visibility
-- a minimal Solidity anchoring contract for file-version digests or batch roots
-
-The contract and demo environment may start in Chronofact. If the anchoring
-contract becomes generic and reusable, a clean version can later be promoted to
-Chronestia.
-
-## AI Explanation Layer
-
-Chronofact may add a reviewer-facing AI surface above Chronestia.
-
-Responsibilities allowed in Chronofact AI:
-
-- explain a single receipt and verification result in natural language
-- summarize a version trace as a story of revisions and derived outputs
-- highlight structured risks such as pending proofs, invalid verification, or
-  missing predecessor links
-
-Responsibilities forbidden for Chronofact AI:
-
-- decide whether business content is true
-- replace verification or proof generation
-- judge misconduct or make disciplinary conclusions
-- invent trust claims that are not present in Chronestia output
-
-The correct layering is:
-
-```text
-Chronofact UI / demo layer
-  -> AI explanation layer
-  -> Chronestia API
-  -> receipt / trace / verification
-```
-
-AI should consume structured outputs from Chronestia and render them as
-reviewer-friendly summaries. The trust root remains Chronestia plus the
-underlying anchor provider.
-
-## Integration Rule
-
-Chronofact translates experiment asset versions into generic witness facts. It
-should not copy Chronestia's internal model or bypass the Chronestia API once
-that service exists.
-
-## Private Source Access
-
-Chronestia source access is maintainer-only.
-
-- the default Chronofact integration mode uses a published Chronestia image
-- normal collaborators should not need the `services/chronestia` source tree
-- maintainer machines may initialize the private submodule and build Chronestia locally
-- Chronofact should document the Docker/API contract, not private kernel implementation details
+- add new reusable services under `services/` only when they represent a real service boundary
+- keep root-level logic focused on orchestration and product semantics
+- prefer submodules for reusable engines with independent release cadence
+- avoid pushing product vocabulary into shared service repositories

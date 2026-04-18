@@ -1,8 +1,8 @@
 # Contributing
 
-- Keep the root repository minimal
-- Prefer small, reviewable changes
-- Avoid adding framework-specific scaffolding to the root unless multiple modules need it
-- Place implementation inside the appropriate module directory
-- Document new cross-cutting conventions in `docs/` when they affect more than one module
-- Treat `services/chronestia` as an optional private maintainer submodule; the default contributor path is to use the published image over Docker/API
+- Keep the root repository focused on integration and product semantics
+- Do not copy internals out of `Chronestia`, `Limora`, or `Dualweave` into the root
+- Prefer small, reviewable changes with clear service boundaries
+- Put reusable engine changes in the relevant submodule repository
+- Put Chronofact-specific orchestration, adapters, and UI/API work in the root project
+- Document any new cross-service contract or environment rule in `docs/`

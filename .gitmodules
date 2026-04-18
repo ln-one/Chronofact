@@ -2,3 +2,11 @@
 	path = services/chronestia
 	url = git@github.com:ln-one/Chronestia.git
 	branch = main
+[submodule "services/limora"]
+	path = services/limora
+	url = git@github.com:ln-one/Limora.git
+	branch = main
+[submodule "services/dualweave"]
+	path = services/dualweave
+	url = git@github.com:ln-one/Dualweave.git
+	branch = main
