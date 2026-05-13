@@ -18,6 +18,11 @@ Chronofact now centers around three reusable service boundaries:
 Chronofact owns the product-facing workflow that composes those services into a
 coherent application.
 
+The phase-one Member A backend lives in `services/chronofact-api`. It is a
+self-contained mock orchestration API for asset submission, digest calculation,
+version linking, witness registration, verification, and AI explanation
+handoff.
+
 ## Current Product Direction
 
 The minimum product flow is:
@@ -46,6 +51,7 @@ services to one narrow ontology.
 ├── scripts/         # Small repo-level utility scripts
 ├── services/        # Independent services and reusable submodules
 │   ├── chronestia/  # Witness kernel
+│   ├── chronofact-api/ # Chronofact-owned phase-one orchestration API
 │   ├── dualweave/   # Upload / delivery engine
 │   └── limora/      # Identity authority
 ├── Makefile         # Common developer entry points
@@ -89,3 +95,14 @@ git submodule update --init --recursive
 
 - [docs/architecture.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/architecture.md)
 - [docs/contributing.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/contributing.md)
+
+## Phase-One Backend Demo
+
+```bash
+cd services/chronofact-api
+npm test
+npm start
+```
+
+See `services/chronofact-api/README.md` for endpoint examples and failure-state
+scenarios.

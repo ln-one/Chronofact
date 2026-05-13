@@ -35,6 +35,12 @@ Chronofact itself owns:
 - reviewer-facing verification and history views
 - environment composition for local development and demos
 
+The current phase-one implementation of that product orchestration lives in
+`services/chronofact-api`. It is a demo-scoped API that uses in-memory asset
+version records plus mock Limora, Dualweave, Chronestia, and AI clients. It is
+not a reusable witness kernel and must not absorb the internals of those
+services.
+
 ## Dependency Rule
 
 The intended composition direction is:
@@ -68,6 +74,10 @@ The current target system behavior is:
 4. compute or confirm a stable digest and version link
 5. record a fact with evidence in the witness engine
 6. return receipt, trace, and product-specific verification state
+
+`services/chronofact-api` demonstrates the same flow with mock clients first, so
+frontend, AI, and chain tracks can develop against stable JSON before real
+service endpoints are available.
 
 This keeps file truth, identity truth, and witness truth separated while still
 forming a coherent application flow.
