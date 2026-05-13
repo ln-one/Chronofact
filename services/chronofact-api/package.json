@@ -1,0 +1,14 @@
+{
+  "name": "chronofact-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chronofact phase-one orchestration API mock for asset version witnessing.",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
