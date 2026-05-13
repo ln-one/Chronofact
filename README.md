@@ -106,3 +106,26 @@ npm start
 
 See `services/chronofact-api/README.md` for endpoint examples and failure-state
 scenarios.
+
+## Phase-One Integrated Check
+
+After dependencies are installed, run the root verification gate:
+
+```bash
+npm run check:phase-one
+```
+
+It runs:
+
+- Chronofact API tests
+- AI explanation tests
+- Solidity contract compilation
+- frontend production build
+- API-to-AI integration smoke test
+
+For the live frontend demo, start the API and then run the frontend with:
+
+```powershell
+$env:VITE_CHRONOFACT_API_URL="http://127.0.0.1:3001"
+npm --prefix services/frontend-demo run dev
+```
