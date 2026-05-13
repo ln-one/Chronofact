@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createChronofactOrchestrator } from "./orchestrator.js";
 import { createInMemoryStore } from "./store.js";
+import { createAiExplanationHttpClient } from "./aiHttpClient.js";
 import {
   createAiExplanationMock,
   createChronestiaMock,
@@ -17,6 +18,9 @@ const moduleDir = fileURLToPath(new URL(".", import.meta.url));
 const defaultStorageDir = join(moduleDir, "..", "..", "..", ".cache", "chronofact", "uploads");
 
 export function createApp({ storageDir = defaultStorageDir } = {}) {
+  const aiClient = process.env.CHRONOFACT_AI_URL
+    ? createAiExplanationHttpClient({ baseUrl: process.env.CHRONOFACT_AI_URL })
+    : createAiExplanationMock();
   const store = createInMemoryStore();
   const orchestrator = createChronofactOrchestrator({
     store,
@@ -24,7 +28,7 @@ export function createApp({ storageDir = defaultStorageDir } = {}) {
       limora: createLimoraMock(),
       dualweave: createDualweaveMock({ storageDir }),
       chronestia: createChronestiaMock(),
-      ai: createAiExplanationMock()
+      ai: aiClient
     }
   });
 
@@ -36,6 +40,12 @@ function createHandler(orchestrator) {
     try {
       const url = new URL(request.url, "http://localhost");
       const scenario = url.searchParams.get("scenario") ?? undefined;
+
+      if (request.method === "OPTIONS") {
+        response.writeHead(204, corsHeaders());
+        response.end();
+        return;
+      }
 
       if (request.method === "GET" && url.pathname === "/health") {
         return sendJson(response, 200, { status: "ok", service: "chronofact-api" });
@@ -118,9 +128,18 @@ async function readJson(request) {
 
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, {
-    "content-type": "application/json; charset=utf-8"
+    "content-type": "application/json; charset=utf-8",
+    ...corsHeaders()
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type"
+  };
 }
 
 export async function startServer({ port = process.env.PORT ?? 3001, storageDir } = {}) {
