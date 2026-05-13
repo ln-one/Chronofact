@@ -73,7 +73,7 @@ npm run dev
 
 ## API 适配边界
 
-当前没有依赖真实后端，前端通过 `src/services/mockChronofactApi.js` 提供 mock service：
+默认情况下页面不依赖真实后端，前端通过 `src/services/mockChronofactApi.js` 提供 mock service：
 
 - `listScenarios()`：返回可切换的演示场景
 - `submitUpload(file, scenarioKey)`：模拟文件上传和资产版本创建
@@ -81,4 +81,11 @@ npm run dev
 - `getVerificationResult(scenarioKey)`：返回 verification result 与 proof 字段
 - `getAiExplanation(scenarioKey)`：返回 AI explanation 字段
 
-后续接入组员 A 的真实 API 时，优先替换这个 service 文件，UI 组件尽量保持不变。
+如果需要接入组员 A 的后端 API，启动 Vite 前设置：
+
+```powershell
+$env:VITE_CHRONOFACT_API_URL="http://127.0.0.1:3001"
+npm run dev
+```
+
+设置后，页面仍保留右上角场景切换，但“开始固化”会调用后端 API 创建资产版本、执行核验并渲染返回的 AI explanation。未设置该变量时，页面继续使用本地 mock 数据。
