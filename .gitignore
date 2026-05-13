@@ -10,6 +10,7 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+configs/chain.env
 
 # Logs
 *.log
@@ -54,3 +55,5 @@ venv/
 
 # Generated local files
 *.local
+deployments/artifacts/
+deployments/ganache/
