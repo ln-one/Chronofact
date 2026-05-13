@@ -18,10 +18,11 @@ Chronofact now centers around three reusable service boundaries:
 Chronofact owns the product-facing workflow that composes those services into a
 coherent application.
 
-The phase-one Member A backend lives in `services/chronofact-api`. It is a
-self-contained mock orchestration API for asset submission, digest calculation,
-version linking, witness registration, verification, and AI explanation
-handoff.
+The phase-one Member A backend lives in `services/chronofact-api`. It is an
+adapter-driven orchestration API for asset submission, digest calculation,
+version linking, upload handoff, witness registration, verification, and AI
+explanation handoff. It defaults to demo adapters, and can call the real AI,
+Dualweave, and Chronestia HTTP services through environment variables.
 
 ## Current Product Direction
 
@@ -104,8 +105,8 @@ npm test
 npm start
 ```
 
-See `services/chronofact-api/README.md` for endpoint examples and failure-state
-scenarios.
+See `services/chronofact-api/README.md` for endpoint examples, adapter
+environment variables, and failure-state scenarios.
 
 ## Phase-One Integrated Check
 

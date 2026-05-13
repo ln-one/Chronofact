@@ -71,6 +71,23 @@ $env:CHRONOFACT_AI_URL="http://127.0.0.1:8000"
 npm start
 ```
 
+如果同时要让 Chronofact API 调用 Docker 暴露的 Chronestia：
+
+```powershell
+$env:CHRONOFACT_CHRONESTIA_URL="http://127.0.0.1:8080"
+npm start
+```
+
+如果要调用 Dualweave 上传服务，还需要提供 Dualweave 的 execution spec：
+
+```powershell
+$env:CHRONOFACT_DUALWEAVE_URL="http://127.0.0.1:8081"
+$env:CHRONOFACT_DUALWEAVE_EXECUTION_FILE="configs\dualweave.execution.json"
+npm start
+```
+
+当前 Limora 身份仍使用固定 demo identity，等上传和存证链路稳定后再替换为 Limora HTTP 身份。
+
 启动前端实时联调模式：
 
 ```powershell
