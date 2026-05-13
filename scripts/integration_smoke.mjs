@@ -12,7 +12,7 @@ let apiServer;
 
 try {
   aiProcess = spawn("python", ["run_server.py"], {
-    cwd: new URL("../ai-explanation/", import.meta.url),
+    cwd: new URL("../services/ai-explanation/", import.meta.url),
     env: {
       ...process.env,
       CHRONOFACT_AI_PORT: String(aiPort),

@@ -59,7 +59,7 @@ npm run check:phase-one
 启动 AI explanation 服务：
 
 ```powershell
-cd ai-explanation
+cd services\ai-explanation
 python run_server.py
 ```
 
