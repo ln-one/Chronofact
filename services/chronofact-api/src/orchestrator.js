@@ -1,7 +1,10 @@
 import { toContentBuffer, sha256Hex } from "./digest.js";
 import { ChronofactError } from "./errors.js";
+import { assertChronofactAdapters } from "./adapters/contracts.js";
 
 export function createChronofactOrchestrator({ store, clients }) {
+  clients = assertChronofactAdapters(clients);
+
   async function submit({ filename, asset_type = "lab_report", content, scenario } = {}) {
     return createVersion({
       filename,

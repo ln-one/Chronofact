@@ -1,19 +1,19 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ChronofactError } from "./errors.js";
-import { MOCK_CONTRACT } from "./mockContract.js";
+import { ChronofactError } from "../errors.js";
+import { MOCK_CONTRACT } from "../mockContract.js";
 
 function cleanFilename(filename) {
   return String(filename || "upload.bin").replace(/[^\w.\-]+/g, "_");
 }
 
-export function createLimoraMock() {
+export function createDemoLimoraAdapter() {
   return {
     async resolveIdentity({ scenario } = {}) {
       if (scenario === "identity_unavailable") {
         throw new ChronofactError(
           "identity_unavailable",
-          "Limora mock identity context is unavailable.",
+          "Demo identity context is unavailable.",
           503
         );
       }
@@ -23,7 +23,7 @@ export function createLimoraMock() {
   };
 }
 
-export function createDualweaveMock({ storageDir }) {
+export function createDualweaveMockAdapter({ storageDir }) {
   return {
     async storeUpload({ uploadId, filename, content, sha256, scenario }) {
       if (scenario === "upload_failed") {
@@ -49,7 +49,7 @@ export function createDualweaveMock({ storageDir }) {
   };
 }
 
-export function createChronestiaMock({ clock = () => new Date() } = {}) {
+export function createChronestiaMockAdapter({ clock = () => new Date() } = {}) {
   return {
     async registerVersion({ assetVersion, previousFactId, scenario }) {
       if (scenario === "chain_unavailable") {
@@ -103,7 +103,7 @@ export function createChronestiaMock({ clock = () => new Date() } = {}) {
   };
 }
 
-export function createAiExplanationMock() {
+export function createAiExplanationMockAdapter() {
   return {
     async explain({ verificationResult, assetVersion, scenario }) {
       if (scenario === "ai_unavailable") {
@@ -162,3 +162,4 @@ export function createAiExplanationMock() {
     }
   };
 }
+

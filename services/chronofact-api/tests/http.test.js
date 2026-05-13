@@ -8,7 +8,7 @@ import { createApp } from "../src/app.js";
 
 async function withServer(t) {
   const storageDir = await mkdtemp(join(tmpdir(), "chronofact-http-"));
-  const { handler } = createApp({ storageDir });
+  const { handler } = createApp({ storageDir, env: {} });
   const server = createServer(handler);
   await new Promise((resolve) => server.listen(0, resolve));
   t.after(async () => {

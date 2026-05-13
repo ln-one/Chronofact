@@ -6,11 +6,11 @@ import test from "node:test";
 import { createChronofactOrchestrator } from "../src/orchestrator.js";
 import { createInMemoryStore } from "../src/store.js";
 import {
-  createAiExplanationMock,
-  createChronestiaMock,
-  createDualweaveMock,
-  createLimoraMock
-} from "../src/mockClients.js";
+  createAiExplanationMockAdapter,
+  createChronestiaMockAdapter,
+  createDemoLimoraAdapter,
+  createDualweaveMockAdapter
+} from "../src/adapters/mockAdapters.js";
 import { sha256Hex } from "../src/digest.js";
 
 async function createTestOrchestrator() {
@@ -20,12 +20,12 @@ async function createTestOrchestrator() {
       clock: () => new Date("2026-05-13T00:00:00.000Z")
     }),
     clients: {
-      limora: createLimoraMock(),
-      dualweave: createDualweaveMock({ storageDir }),
-      chronestia: createChronestiaMock({
+      limora: createDemoLimoraAdapter(),
+      dualweave: createDualweaveMockAdapter({ storageDir }),
+      chronestia: createChronestiaMockAdapter({
         clock: () => new Date("2026-05-13T00:00:00.000Z")
       }),
-      ai: createAiExplanationMock()
+      ai: createAiExplanationMockAdapter()
     }
   });
 

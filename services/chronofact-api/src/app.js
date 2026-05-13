@@ -4,32 +4,18 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createChronofactOrchestrator } from "./orchestrator.js";
 import { createInMemoryStore } from "./store.js";
-import { createAiExplanationHttpClient } from "./aiHttpClient.js";
-import {
-  createAiExplanationMock,
-  createChronestiaMock,
-  createDualweaveMock,
-  createLimoraMock
-} from "./mockClients.js";
+import { createChronofactAdapters } from "./adapters/factory.js";
 import { isChronofactError } from "./errors.js";
 import { MOCK_CONTRACT } from "./mockContract.js";
 
 const moduleDir = fileURLToPath(new URL(".", import.meta.url));
 const defaultStorageDir = join(moduleDir, "..", "..", "..", ".cache", "chronofact", "uploads");
 
-export function createApp({ storageDir = defaultStorageDir } = {}) {
-  const aiClient = process.env.CHRONOFACT_AI_URL
-    ? createAiExplanationHttpClient({ baseUrl: process.env.CHRONOFACT_AI_URL })
-    : createAiExplanationMock();
+export function createApp({ storageDir = defaultStorageDir, env = process.env } = {}) {
   const store = createInMemoryStore();
   const orchestrator = createChronofactOrchestrator({
     store,
-    clients: {
-      limora: createLimoraMock(),
-      dualweave: createDualweaveMock({ storageDir }),
-      chronestia: createChronestiaMock(),
-      ai: aiClient
-    }
+    clients: createChronofactAdapters({ env, storageDir })
   });
 
   return { orchestrator, handler: createHandler(orchestrator) };
