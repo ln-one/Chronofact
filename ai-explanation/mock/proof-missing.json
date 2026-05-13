@@ -1,0 +1,24 @@
+{
+  "asset_version": {
+    "asset_id": "asset_002",
+    "asset_type": "lab_report",
+    "version_no": 1,
+    "previous_version_id": null,
+    "sha256": "def456",
+    "submitter_id": "user_001"
+  },
+  "receipt": {},
+  "trace": {
+    "trace_id": "trace_002",
+    "status": "pending"
+  },
+  "verification_result": {
+    "status": "pending",
+    "digest_match": true,
+    "receipt_status": "missing",
+    "trace_status": "pending",
+    "failure_reason": "proof missing"
+  },
+  "version_history": []
+}
+

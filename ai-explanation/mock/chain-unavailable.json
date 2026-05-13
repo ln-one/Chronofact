@@ -1,0 +1,25 @@
+{
+  "asset_version": {
+    "asset_id": "asset_003",
+    "asset_type": "lab_report",
+    "version_no": 1,
+    "previous_version_id": null,
+    "sha256": "ghi789",
+    "submitter_id": "user_001"
+  },
+  "receipt": {
+    "receipt_id": "rcp_003",
+    "tx_hash": "0xpending",
+    "timestamp": "2026-05-13T11:00:00Z"
+  },
+  "trace": {},
+  "verification_result": {
+    "status": "unsupported",
+    "digest_match": true,
+    "receipt_status": "available",
+    "trace_status": "unavailable",
+    "failure_reason": "chain unavailable"
+  },
+  "version_history": []
+}
+
