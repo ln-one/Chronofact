@@ -4,6 +4,7 @@ import {
   getAssetDetail,
   getScenario,
   getVerificationResult,
+  isLiveApiEnabled,
   listScenarios,
   submitUpload,
 } from "./services/mockChronofactApi";
@@ -38,7 +39,8 @@ export default function App() {
   const [workflowStage, setWorkflowStage] = useState("idle");
   const [aiGenerated, setAiGenerated] = useState(true);
   const [summaryReady, setSummaryReady] = useState(false);
-  const data = getScenario(scenarioKey);
+  const [liveData, setLiveData] = useState(null);
+  const data = liveData || getScenario(scenarioKey);
   const style = statusConfig[data.verification_result.status] || statusConfig.pending;
   const effectiveFilename = selectedFile?.name || data.upload_record.filename;
   const pageMeta = {
@@ -108,21 +110,28 @@ export default function App() {
     setSummaryReady(false);
     setAiGenerated(false);
     setWorkflowStage("hashing");
-    await submitUpload(selectedFile, scenarioKey);
+    const submitted = await submitUpload(selectedFile, scenarioKey);
+    let currentData = submitted.scenarioData || null;
+    if (currentData) setLiveData(currentData);
     await delay(700);
     setWorkflowStage("preserving");
-    await getAssetDetail(scenarioKey);
+    const detail = await getAssetDetail(scenarioKey);
+    currentData = detail.scenarioData || currentData;
+    if (currentData) setLiveData(currentData);
     await delay(700);
     setWorkflowStage("pending_receipt");
-    await getVerificationResult(scenarioKey);
+    const verification = await getVerificationResult(scenarioKey);
+    currentData = verification.scenarioData || currentData;
+    if (currentData) setLiveData(currentData);
     await delay(700);
-    setWorkflowStage(data.verification_result.status);
+    setWorkflowStage((currentData || data).verification_result.status);
   }
 
   async function generateAiReview() {
     setWorkflowStage("ai_ready");
     setAiGenerated(false);
-    await getAiExplanation(scenarioKey);
+    const explanation = await getAiExplanation(scenarioKey);
+    if (explanation.scenarioData) setLiveData(explanation.scenarioData);
     await delay(650);
     setAiGenerated(true);
   }
@@ -189,6 +198,11 @@ export default function App() {
                 </span>
               </div>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-blue-50">{pageMeta.description}</p>
+              {isLiveApiEnabled() && (
+                <p className="mt-2 text-xs font-medium text-teal-100">
+                  Live backend mode: using Chronofact API responses for this workflow.
+                </p>
+              )}
               <div className="mt-5 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
                 <HeroFact label="文件" value={effectiveFilename} />
                 <HeroFact label="版本" value={`v${data.asset_version.version_no}`} />
@@ -206,6 +220,7 @@ export default function App() {
                   setSelectedFile(null);
                   setAiGenerated(true);
                   setSummaryReady(false);
+                  setLiveData(null);
                 }}
                 className="min-w-56 cursor-pointer rounded-lg border border-white/30 bg-white px-4 py-2 text-sm font-medium text-slate-800 shadow-sm outline-none focus:ring-2 focus:ring-teal-300"
               >
