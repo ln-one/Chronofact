@@ -1,0 +1,41 @@
+{
+  "asset_version": {
+    "asset_id": "asset_004",
+    "asset_type": "lab_report",
+    "version_no": 2,
+    "previous_version_id": "asset_004_v1",
+    "sha256": "v2hash",
+    "submitter_id": "user_001"
+  },
+  "receipt": {
+    "receipt_id": "rcp_004_v2",
+    "tx_hash": "0xv2",
+    "timestamp": "2026-05-13T12:00:00Z"
+  },
+  "trace": {
+    "trace_id": "trace_004_v2",
+    "status": "available"
+  },
+  "verification_result": {
+    "status": "verified",
+    "digest_match": true,
+    "receipt_status": "available",
+    "trace_status": "available",
+    "failure_reason": null
+  },
+  "version_history": [
+    {
+      "version_id": "asset_004_v1",
+      "version_no": 1,
+      "sha256": "v1hash",
+      "previous_version_id": null
+    },
+    {
+      "version_id": "asset_004_v2",
+      "version_no": 2,
+      "sha256": "v2hash",
+      "previous_version_id": "asset_004_v1"
+    }
+  ]
+}
+
