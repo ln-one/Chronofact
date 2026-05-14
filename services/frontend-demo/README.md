@@ -11,11 +11,13 @@
 
 ## 页面内容
 
-页面按系统视图组织，顶部导航可在四个页面之间切换：
+页面按系统视图组织，先进入启动页，再通过侧边栏在业务页面之间切换：
 
+- 启动页 `/`：系统介绍与开始入口
+- 概览 `/dashboard`：系统状态与最近提交记录
 - 实验项目：文件选择、摘要计算、固化提交、回执等待和流程状态
 - 资产库：资产基础信息、SHA-256 摘要、版本与 previous link 时间线
-- 核验中心：可信证据链固化回执、验证状态、AI summary、risks 和 next checks
+- 核验中心 `/verify/:scenarioId`：可信证据链固化回执、验证状态、AI summary、risks、next checks 和 evidence basis
 - 报告导出：核验摘要、人工复核建议和 AI 边界声明
 
 ## 统一 Mock Contract
@@ -27,6 +29,8 @@
 - `asset_version`
 - `verification_result`
 - `ai_explanation`
+
+其中 `ai_explanation` 包含 `summary`、`risks`、`next_checks`、`confidence_note` 和 `evidence_basis`。`evidence_basis` 用于展示 `fact_id`、`subject_id`、`receipt_provider`、`anchor_status`、`verification_status` 和证明来源字段。
 
 前端为了展示课程验收需要，额外扩展了：
 

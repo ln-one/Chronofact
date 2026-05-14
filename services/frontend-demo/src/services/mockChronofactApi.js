@@ -1,3 +1,13 @@
+function createEvidenceBasis(factId, subjectId, receiptProvider, anchorStatus, verificationStatus) {
+  return {
+    fact_id: factId,
+    subject_id: subjectId,
+    receipt_provider: receiptProvider,
+    anchor_status: anchorStatus,
+    verification_status: verificationStatus,
+    sources: ["sha256 digest", "receipt", "trace", "verification result"],
+  };
+}
 const scenarios = {
   normalSubmission: {
     label: "实验报告 v1",
@@ -41,6 +51,7 @@ const scenarios = {
       risks: ["暂无明显验证风险。"],
       next_checks: ["人工复核文件内容是否符合提交要求。", "归档 receipt 与 transaction hash。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_001", "subject_asset_001", "chronestia-demo", "anchored", "verified"),
     },
     timeline: [
       {
@@ -94,6 +105,7 @@ const scenarios = {
       risks: ["可能上传了被修改后的文件。", "也可能选择了错误的文件版本。"],
       next_checks: ["重新选择原始提交文件。", "对比页面上的 digest 与登记 receipt。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_001", "subject_asset_001", "chronestia-demo", "anchored", "failed"),
     },
     timeline: [
       {
@@ -147,6 +159,7 @@ const scenarios = {
       risks: ["系统暂时无法给出完整验证结论。"],
       next_checks: ["等待 receipt 返回。", "稍后重新刷新验证状态。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_003", "subject_asset_003", "chronestia-demo", "pending", "pending"),
     },
     timeline: [
       {
@@ -200,6 +213,7 @@ const scenarios = {
       risks: ["底层证据网络不可达。"],
       next_checks: ["检查 Chronestia 服务或区块链节点状态。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_004", "subject_asset_004", "chronestia-demo", "unavailable", "unsupported"),
     },
     timeline: [
       {
@@ -253,6 +267,7 @@ const scenarios = {
       risks: ["需要确认 v2 修改内容是否符合课程提交要求。"],
       next_checks: ["人工对比 v1 与 v2 的修改范围。", "确认 previous_version_id 指向正确的上一版记录。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_001_v2", "subject_asset_001", "chronestia-demo", "anchored", "verified"),
     },
     timeline: [
       {
@@ -313,6 +328,7 @@ const scenarios = {
       risks: ["当前没有可核验的 digest、receipt 或 trace。"],
       next_checks: ["重新上传文件。", "检查文件大小、网络状态和本地存储服务。"],
       confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_upload_failed", "subject_uncreated", "none", "not_created", "failed"),
     },
     timeline: [],
   },
@@ -358,6 +374,7 @@ const scenarios = {
       risks: ["AI 文案缺失不影响 digest、receipt、trace 和 verification result 的证明地位。"],
       next_checks: ["人工查看回执字段。", "稍后重试 AI explanation 服务。"],
       confidence_note: "AI 解释不可用时，证明来源仍然是结构化回执与验证结果。",
+      evidence_basis: createEvidenceBasis("fact_007", "subject_asset_007", "chronestia-demo", "anchored", "verified"),
     },
     timeline: [
       {
@@ -402,6 +419,9 @@ export async function getAssetDetail(scenarioKey) {
     identity_context: scenario.identity_context,
     upload_record: scenario.upload_record,
     asset_version: scenario.asset_version,
+    verification_result: scenario.verification_result,
+    proof: scenario.proof,
+    ai_explanation: scenario.ai_explanation,
     timeline: scenario.timeline,
   };
 }

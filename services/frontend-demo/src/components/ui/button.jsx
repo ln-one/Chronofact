@@ -1,9 +1,9 @@
 import { cn } from "../../lib/utils";
 
 const variants = {
-  primary: "bg-blue-600 text-white hover:bg-blue-700",
+  primary: "bg-emerald-600 text-white hover:bg-emerald-700",
   ghost: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
-  sidebar: "text-left text-slate-300 hover:bg-slate-800 hover:text-white",
+  sidebar: "text-left text-slate-600 hover:bg-emerald-50 hover:text-emerald-800",
 };
 
 export function Button({ className, variant = "primary", ...props }) {
