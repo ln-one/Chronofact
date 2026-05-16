@@ -188,6 +188,27 @@ test("evidence search returns preservation records with asset and version contex
   assert.equal(detail.evidence.witness_record.fact_id, created.witness_record.fact_id);
 });
 
+test("version reports export verification conclusion with evidence and AI next checks", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const created = await orchestrator.submit({
+    filename: "report.pdf",
+    content: { content_text: "report" }
+  });
+  const report = await orchestrator.exportVersionReport({
+    version_id: created.asset_version.version_id
+  });
+
+  assert.equal(report.report.format, "markdown");
+  assert.equal(report.verification_result.status, "verified");
+  assert.match(report.report.content, /# Verification Report:/);
+  assert.match(report.report.content, /## Evidence/);
+  assert.match(report.report.content, /## Verification/);
+  assert.match(report.report.content, /## AI Explanation/);
+  assert.match(report.report.content, new RegExp(created.asset_version.sha256));
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

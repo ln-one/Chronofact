@@ -170,6 +170,33 @@ test("HTTP API filters assets and evidence by status and date range", async (t) 
   assert.equal(detailBody.evidence.witness_record.fact_id, verified.body.witness_record.fact_id);
 });
 
+test("HTTP API exports version verification reports", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const created = await postJson(`${baseUrl}/assets`, {
+    asset_title: "Final report",
+    filename: "report.md",
+    content_text: "report"
+  });
+
+  const report = await fetch(`${baseUrl}/versions/${created.body.asset_version.version_id}/report`);
+  const reportBody = await report.json();
+  assert.equal(report.status, 200);
+  assert.equal(reportBody.report.format, "markdown");
+  assert.equal(reportBody.verification_result.status, "verified");
+  assert.match(reportBody.report.content, /# Verification Report:/);
+  assert.match(reportBody.report.content, /## Next Checks/);
+  assert.match(reportBody.report.content, new RegExp(created.body.asset_version.sha256));
+
+  const unavailable = await fetch(
+    `${baseUrl}/versions/${created.body.asset_version.version_id}/report?scenario=chain_unavailable`
+  );
+  const unavailableBody = await unavailable.json();
+  assert.equal(unavailable.status, 200);
+  assert.equal(unavailableBody.verification_result.status, "unsupported");
+  assert.match(unavailableBody.report.content, /chain_unavailable/);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

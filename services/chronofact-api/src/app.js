@@ -123,6 +123,14 @@ function createHandler(orchestrator) {
         }));
       }
 
+      const versionReportMatch = url.pathname.match(/^\/versions\/([^/]+)\/report$/);
+      if (request.method === "GET" && versionReportMatch) {
+        return sendJson(response, 200, await orchestrator.exportVersionReport({
+          version_id: versionReportMatch[1],
+          scenario
+        }));
+      }
+
       if (request.method === "POST" && url.pathname === "/ai/explain/fact") {
         const body = await readJson(request);
         const result = await orchestrator.explainFact({

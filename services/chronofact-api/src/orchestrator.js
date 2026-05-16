@@ -362,6 +362,75 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  async function exportVersionReport({ version_id, scenario } = {}) {
+    if (!version_id) {
+      throw new ChronofactError("invalid_request", "version_id is required.", 400);
+    }
+
+    const { evidence } = describeEvidence({ version_id });
+    const verificationResult = await clients.chronestia.verifyVersion({
+      assetVersion: evidence.asset_version,
+      scenario
+    });
+    const ai = await explainSafely({
+      verificationResult,
+      assetVersion: evidence.asset_version,
+      versionHistory: store.listVersions(evidence.asset.asset_id),
+      scenario
+    });
+
+    const lines = [
+      `# Verification Report: ${evidence.asset.title ?? evidence.asset.asset_id} v${evidence.asset_version.version_no}`,
+      "",
+      "## Asset",
+      "",
+      `- Asset ID: ${evidence.asset.asset_id}`,
+      `- Workspace ID: ${evidence.asset.workspace_id ?? "none"}`,
+      `- Asset type: ${evidence.asset.asset_type}`,
+      `- Version ID: ${evidence.asset_version.version_id}`,
+      `- Version number: ${evidence.asset_version.version_no}`,
+      `- Previous version ID: ${evidence.asset_version.previous_version_id ?? "none"}`,
+      "",
+      "## Evidence",
+      "",
+      `- Digest algorithm: ${evidence.preservation_record.digest_algorithm}`,
+      `- Digest: ${evidence.preservation_record.digest}`,
+      `- Storage ref: ${evidence.preservation_record.storage_ref}`,
+      `- Fact ID: ${evidence.preservation_record.fact_id}`,
+      `- Receipt ID: ${evidence.preservation_record.receipt_id}`,
+      `- Anchor status: ${evidence.preservation_record.anchor_status}`,
+      "",
+      "## Verification",
+      "",
+      `- Status: ${verificationResult.status}`,
+      `- Digest match: ${verificationResult.digest_match}`,
+      `- Receipt status: ${verificationResult.receipt_status}`,
+      `- Trace status: ${verificationResult.trace_status}`,
+      `- Failure reason: ${verificationResult.failure_reason ?? "none"}`,
+      "",
+      "## AI Explanation",
+      "",
+      ai.ai_explanation
+        ? ai.ai_explanation.summary
+        : `AI explanation unavailable: ${ai.ai_explanation_error?.message ?? "unknown"}`,
+      "",
+      "## Next Checks",
+      "",
+      ...(ai.ai_explanation?.next_checks ?? ["Review the structured evidence manually."]).map((check) => `- ${check}`)
+    ];
+
+    return {
+      evidence,
+      verification_result: verificationResult,
+      ...ai,
+      report: {
+        format: "markdown",
+        generated_at: new Date().toISOString(),
+        content: lines.join("\n")
+      }
+    };
+  }
+
   async function explainSafely({ verificationResult, assetVersion, versionHistory = [], scenario }) {
     try {
       return {
@@ -398,6 +467,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     exportWorkspaceReport,
     listEvidence,
     describeEvidence,
+    exportVersionReport,
     explainFact,
     explainTrace,
     explainRisk,

@@ -175,6 +175,16 @@ preservation record, witness record, and audit log.
 curl -s http://localhost:3001/versions/ver_001/evidence
 ```
 
+### `GET /versions/:version_id/report`
+
+Returns a lightweight Markdown verification report for one version. The report
+includes the asset fact, digest, preservation record, current verification
+state, AI explanation, and reviewer next checks.
+
+```bash
+curl -s http://localhost:3001/versions/ver_001/report
+```
+
 ### `GET /assets`
 
 Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, `q`,
@@ -276,6 +286,7 @@ The result is `failed` with `failure_reason = digest_mismatch`.
   `GET /workspaces/:id/report`.
 - Retrieval flow: `GET /assets?verification_status=verified`, `GET /evidence`,
   then `GET /versions/:id/evidence`.
+- Verification report: `GET /versions/:id/report`.
 - Normal submission: `POST /assets`, then `POST /verify` with the same content.
 - Tampered file: `POST /verify` with different content.
 - Missing proof: `POST /verify` with `scenario=proof_missing`.
