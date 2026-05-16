@@ -160,6 +160,16 @@ Lists workspaces. Optional filters: `status`, `workspace_type`, `q`,
 
 Returns a workspace with its asset list and audit timeline.
 
+### `GET /workspaces/:workspace_id/overview`
+
+Returns a dashboard-ready workspace overview with asset/version/evidence
+counts, verification status distribution, review decision distribution,
+attention items, latest audit activity, and useful links.
+
+```bash
+curl -s http://localhost:3001/workspaces/ws_001/overview
+```
+
 ### `POST /workspaces/:workspace_id/assets`
 
 Creates the first version of an asset inside a workspace.
@@ -338,7 +348,7 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 ## Demo Checklist
 
 - Seeded end-to-end demo: `POST /demo/seed`, then open the returned
-  `demo_links.workspace`, `demo_links.primary_report`, and
+  `demo_links.overview`, `demo_links.primary_report`, and
   `demo_links.pending_report` paths.
 - Workspace flow: `POST /workspaces`, then `POST /workspaces/:id/assets`, then
   `GET /workspaces/:id/report`.

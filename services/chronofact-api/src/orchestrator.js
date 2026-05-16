@@ -413,6 +413,75 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  function describeWorkspaceOverview(workspaceId) {
+    const workspace = store.describeWorkspace(workspaceId);
+    const evidence = store.listPreservationRecords({ workspaceId });
+    const reviews = store.listReviewRecords({ workspaceId });
+    const auditLog = store.listAuditLogs({ workspaceId });
+    const versionCount = workspace.assets.reduce((count, asset) => count + asset.version_ids.length, 0);
+    const verificationStatusCounts = countBy(evidence, "verification_status");
+    const failureReasonCounts = countBy(evidence.filter((record) => record.failure_reason), "failure_reason");
+    const reviewDecisionCounts = countBy(reviews, "decision");
+    const attentionItems = [
+      ...evidence
+        .filter((record) => record.verification_status !== "verified")
+        .map((record) => ({
+          kind: "verification",
+          severity: record.verification_status === "failed" ? "high" : "medium",
+          asset_id: record.asset_id,
+          version_id: record.version_id,
+          status: record.verification_status,
+          failure_reason: record.failure_reason,
+          summary: `Version ${record.version_id} verification is ${record.verification_status}.`
+        })),
+      ...reviews
+        .filter((review) => ["needs_revision", "rejected"].includes(review.decision))
+        .map((review) => ({
+          kind: "manual_review",
+          severity: review.decision === "rejected" ? "high" : "medium",
+          asset_id: review.asset_id,
+          version_id: review.version_id,
+          review_id: review.review_id,
+          decision: review.decision,
+          summary: review.summary || `Manual review decision is ${review.decision}.`
+        }))
+    ];
+
+    return {
+      workspace,
+      summary: {
+        asset_count: workspace.assets.length,
+        version_count: versionCount,
+        evidence_count: evidence.length,
+        review_count: reviews.length,
+        audit_event_count: auditLog.length,
+        verification_status_counts: verificationStatusCounts,
+        failure_reason_counts: failureReasonCounts,
+        review_decision_counts: reviewDecisionCounts,
+        attention_count: attentionItems.length
+      },
+      attention_items: attentionItems,
+      latest_activity: auditLog.slice(-8).reverse(),
+      links: {
+        workspace: `/workspaces/${workspace.workspace_id}`,
+        overview: `/workspaces/${workspace.workspace_id}/overview`,
+        workspace_report: `/workspaces/${workspace.workspace_id}/report`,
+        assets: `/assets?workspace_id=${workspace.workspace_id}`,
+        evidence: `/evidence?workspace_id=${workspace.workspace_id}`,
+        reviews: `/reviews?workspace_id=${workspace.workspace_id}`,
+        audit_log: `/audit-log?workspace_id=${workspace.workspace_id}`
+      }
+    };
+  }
+
+  function countBy(items, field) {
+    return items.reduce((counts, item) => {
+      const value = item[field] ?? "none";
+      counts[value] = (counts[value] ?? 0) + 1;
+      return counts;
+    }, {});
+  }
+
   async function exportVersionReport({ version_id, scenario } = {}) {
     if (!version_id) {
       throw new ChronofactError("invalid_request", "version_id is required.", 400);
@@ -572,6 +641,7 @@ export function createChronofactOrchestrator({ store, clients }) {
         assets: `/assets?workspace_id=${workspaceId}`,
         evidence: `/evidence?workspace_id=${workspaceId}`,
         audit_log: `/audit-log?workspace_id=${workspaceId}`,
+        overview: `/workspaces/${workspaceId}/overview`,
         primary_evidence: `/versions/${reportVersionId}/evidence`,
         primary_report: `/versions/${reportVersionId}/report`,
         primary_risk: `/ai/explain/risk`,
@@ -633,6 +703,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     updateWorkspaceStatus,
     listWorkspaces: (filters) => store.listWorkspaces(filters),
     describeWorkspace: (workspaceId) => store.describeWorkspace(workspaceId),
+    describeWorkspaceOverview,
     submit,
     createVersion,
     verify,

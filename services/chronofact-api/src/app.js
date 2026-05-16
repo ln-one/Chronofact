@@ -103,6 +103,11 @@ function createHandler(orchestrator) {
         return sendJson(response, 200, orchestrator.exportWorkspaceReport(workspaceReportMatch[1]));
       }
 
+      const workspaceOverviewMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/overview$/);
+      if (request.method === "GET" && workspaceOverviewMatch) {
+        return sendJson(response, 200, orchestrator.describeWorkspaceOverview(workspaceOverviewMatch[1]));
+      }
+
       const workspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)$/);
       if (request.method === "GET" && workspaceMatch) {
         return sendJson(response, 200, orchestrator.describeWorkspace(workspaceMatch[1]));

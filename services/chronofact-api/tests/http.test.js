@@ -278,6 +278,25 @@ test("HTTP API seeds a complete local demo workflow", async (t) => {
   assert.match(pendingReportBody.report.content, /Decision: needs_revision/);
 });
 
+test("HTTP API returns workspace overview for dashboard display", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const seeded = await postJson(`${baseUrl}/demo/seed`, {});
+  const overview = await fetch(`${baseUrl}${seeded.body.demo_links.overview}`);
+  const overviewBody = await overview.json();
+
+  assert.equal(overview.status, 200);
+  assert.equal(overviewBody.workspace.workspace_id, seeded.body.workspace.workspace_id);
+  assert.equal(overviewBody.summary.asset_count, 2);
+  assert.equal(overviewBody.summary.version_count, 3);
+  assert.equal(overviewBody.summary.verification_status_counts.verified, 2);
+  assert.equal(overviewBody.summary.verification_status_counts.pending, 1);
+  assert.equal(overviewBody.summary.review_decision_counts.needs_revision, 1);
+  assert.ok(overviewBody.attention_items.some((item) => item.failure_reason === "proof_missing"));
+  assert.ok(overviewBody.latest_activity.some((entry) => entry.action === "workspace_status_updated"));
+  assert.match(overviewBody.links.workspace_report, new RegExp(seeded.body.workspace.workspace_id));
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

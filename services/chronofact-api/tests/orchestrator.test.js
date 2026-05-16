@@ -301,6 +301,28 @@ test("demo seed creates a complete course delivery workflow", async (t) => {
   assert.ok(audit.audit_log.some((entry) => entry.action === "review_record_created"));
 });
 
+test("workspace overview aggregates evidence, reviews, activity, and attention items", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const seeded = await orchestrator.seedDemoScenario();
+  const overview = orchestrator.describeWorkspaceOverview(seeded.workspace.workspace_id);
+
+  assert.equal(overview.summary.asset_count, 2);
+  assert.equal(overview.summary.version_count, 3);
+  assert.equal(overview.summary.evidence_count, 3);
+  assert.equal(overview.summary.review_count, 2);
+  assert.equal(overview.summary.verification_status_counts.verified, 2);
+  assert.equal(overview.summary.verification_status_counts.pending, 1);
+  assert.equal(overview.summary.failure_reason_counts.proof_missing, 1);
+  assert.equal(overview.summary.review_decision_counts.approved, 1);
+  assert.equal(overview.summary.review_decision_counts.needs_revision, 1);
+  assert.ok(overview.attention_items.some((item) => item.kind === "verification"));
+  assert.ok(overview.attention_items.some((item) => item.kind === "manual_review"));
+  assert.ok(overview.latest_activity.length > 0);
+  assert.match(overview.links.overview, new RegExp(seeded.workspace.workspace_id));
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));
