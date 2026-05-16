@@ -65,6 +65,17 @@ function createHandler(orchestrator) {
         return sendJson(response, 201, result);
       }
 
+      const workspaceStatusMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/status$/);
+      if (request.method === "POST" && workspaceStatusMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.updateWorkspaceStatus({
+          workspace_id: workspaceStatusMatch[1],
+          status: body.status,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
       const workspaceAssetMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/assets$/);
       if (request.method === "POST" && workspaceAssetMatch) {
         const body = await readJson(request);
@@ -116,6 +127,17 @@ function createHandler(orchestrator) {
         }));
       }
 
+      if (request.method === "GET" && url.pathname === "/audit-log") {
+        return sendJson(response, 200, orchestrator.listAuditLog({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          action: url.searchParams.get("action") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
       const versionEvidenceMatch = url.pathname.match(/^\/versions\/([^/]+)\/evidence$/);
       if (request.method === "GET" && versionEvidenceMatch) {
         return sendJson(response, 200, orchestrator.describeEvidence({
@@ -128,6 +150,42 @@ function createHandler(orchestrator) {
         return sendJson(response, 200, await orchestrator.exportVersionReport({
           version_id: versionReportMatch[1],
           scenario
+        }));
+      }
+
+      const versionReviewMatch = url.pathname.match(/^\/versions\/([^/]+)\/reviews$/);
+      if (request.method === "POST" && versionReviewMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.createReview({
+          version_id: versionReviewMatch[1],
+          decision: body.decision,
+          summary: body.summary,
+          notes: body.notes,
+          next_checks: body.next_checks,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      if (request.method === "GET" && versionReviewMatch) {
+        return sendJson(response, 200, orchestrator.listReviews({
+          versionId: versionReviewMatch[1],
+          decision: url.searchParams.get("decision") ?? undefined,
+          reviewerId: url.searchParams.get("reviewer_id") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/reviews") {
+        return sendJson(response, 200, orchestrator.listReviews({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          decision: url.searchParams.get("decision") ?? undefined,
+          reviewerId: url.searchParams.get("reviewer_id") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
         }));
       }
 

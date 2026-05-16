@@ -197,6 +197,54 @@ test("HTTP API exports version verification reports", async (t) => {
   assert.match(unavailableBody.report.content, /chain_unavailable/);
 });
 
+test("HTTP API records manual reviews and workspace status changes", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const workspace = await postJson(`${baseUrl}/workspaces`, {
+    title: "Review Workspace"
+  });
+  const created = await postJson(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/assets`, {
+    filename: "report.md",
+    content_text: "report"
+  });
+
+  const status = await postJson(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/status`, {
+    status: "under_review"
+  });
+  assert.equal(status.status, 200);
+  assert.equal(status.body.workspace.status, "under_review");
+
+  const review = await postJson(`${baseUrl}/versions/${created.body.asset_version.version_id}/reviews`, {
+    decision: "approved",
+    summary: "Evidence is complete",
+    notes: "Manual review accepted the submitted package.",
+    next_checks: ["Archive the submission"]
+  });
+  assert.equal(review.status, 201);
+  assert.equal(review.body.review_record.decision, "approved");
+  assert.equal(review.body.evidence.review_records.length, 1);
+
+  const reviews = await fetch(`${baseUrl}/reviews?workspace_id=${workspace.body.workspace.workspace_id}&decision=approved`);
+  const reviewsBody = await reviews.json();
+  assert.equal(reviews.status, 200);
+  assert.equal(reviewsBody.reviews.length, 1);
+
+  const versionReviews = await fetch(`${baseUrl}/versions/${created.body.asset_version.version_id}/reviews`);
+  const versionReviewsBody = await versionReviews.json();
+  assert.equal(versionReviews.status, 200);
+  assert.equal(versionReviewsBody.reviews[0].summary, "Evidence is complete");
+
+  const audit = await fetch(`${baseUrl}/audit-log?workspace_id=${workspace.body.workspace.workspace_id}&action=review_record_created`);
+  const auditBody = await audit.json();
+  assert.equal(audit.status, 200);
+  assert.equal(auditBody.audit_log.length, 1);
+
+  const report = await fetch(`${baseUrl}/versions/${created.body.asset_version.version_id}/report`);
+  const reportBody = await report.json();
+  assert.match(reportBody.report.content, /## Manual Review/);
+  assert.match(reportBody.report.content, /Decision: approved/);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

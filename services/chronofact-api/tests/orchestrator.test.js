@@ -209,6 +209,69 @@ test("version reports export verification conclusion with evidence and AI next c
   assert.match(report.report.content, new RegExp(created.asset_version.sha256));
 });
 
+test("manual reviews are separate from AI explanations and appear in reports", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const workspace = await orchestrator.createWorkspace({
+    title: "Manual Review"
+  });
+  const created = await orchestrator.submit({
+    workspace_id: workspace.workspace.workspace_id,
+    filename: "report.pdf",
+    content: { content_text: "report" }
+  });
+
+  const review = await orchestrator.createReview({
+    version_id: created.asset_version.version_id,
+    decision: "needs_revision",
+    summary: "Missing result screenshot",
+    notes: "Ask the student to upload the screenshot evidence.",
+    next_checks: ["Upload screenshot", "Re-run verification report"]
+  });
+  assert.equal(review.review_record.decision, "needs_revision");
+  assert.equal(review.evidence.review_records.length, 1);
+
+  const reviews = orchestrator.listReviews({
+    workspaceId: workspace.workspace.workspace_id,
+    decision: "needs_revision"
+  });
+  assert.equal(reviews.reviews.length, 1);
+
+  const audit = orchestrator.listAuditLog({
+    workspaceId: workspace.workspace.workspace_id,
+    action: "review_record_created"
+  });
+  assert.equal(audit.audit_log.length, 1);
+
+  const report = await orchestrator.exportVersionReport({
+    version_id: created.asset_version.version_id
+  });
+  assert.match(report.report.content, /## Manual Review/);
+  assert.match(report.report.content, /Decision: needs_revision/);
+  assert.match(report.report.content, /Missing result screenshot/);
+});
+
+test("workspace status updates are audited", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const workspace = await orchestrator.createWorkspace({
+    title: "Status Flow"
+  });
+  const updated = await orchestrator.updateWorkspaceStatus({
+    workspace_id: workspace.workspace.workspace_id,
+    status: "under_review"
+  });
+
+  assert.equal(updated.workspace.status, "under_review");
+  const audit = orchestrator.listAuditLog({
+    workspaceId: workspace.workspace.workspace_id,
+    action: "workspace_status_updated"
+  });
+  assert.equal(audit.audit_log.length, 1);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

@@ -31,6 +31,27 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  async function updateWorkspaceStatus({ workspace_id, status, scenario } = {}) {
+    if (!workspace_id) {
+      throw new ChronofactError("invalid_request", "workspace_id is required.", 400);
+    }
+    if (!status) {
+      throw new ChronofactError("invalid_request", "status is required.", 400);
+    }
+
+    const identityContext = await clients.limora.resolveIdentity({ scenario });
+    const workspace = store.updateWorkspaceStatus({
+      workspaceId: workspace_id,
+      status,
+      actorId: identityContext.user_id
+    });
+
+    return {
+      identity_context: identityContext,
+      workspace
+    };
+  }
+
   async function submit({
     workspace_id,
     asset_title,
@@ -273,6 +294,36 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  async function createReview({ version_id, decision, summary = "", notes = "", next_checks = [], scenario } = {}) {
+    if (!version_id) {
+      throw new ChronofactError("invalid_request", "version_id is required.", 400);
+    }
+    const allowedDecisions = new Set(["approved", "needs_revision", "rejected", "pending"]);
+    if (!allowedDecisions.has(decision)) {
+      throw new ChronofactError(
+        "invalid_review_decision",
+        "decision must be one of approved, needs_revision, rejected, or pending.",
+        400
+      );
+    }
+
+    const identityContext = await clients.limora.resolveIdentity({ scenario });
+    const reviewRecord = store.createReviewRecord({
+      versionId: version_id,
+      reviewerId: identityContext.user_id,
+      decision,
+      summary,
+      notes,
+      nextChecks: next_checks
+    });
+
+    return {
+      identity_context: identityContext,
+      review_record: reviewRecord,
+      evidence: store.describeEvidence({ versionId: version_id })
+    };
+  }
+
   function resolveVersion({ asset_id, version_id } = {}) {
     if (!asset_id && !version_id) {
       throw new ChronofactError("invalid_request", "asset_id or version_id is required.", 400);
@@ -414,6 +465,10 @@ export function createChronofactOrchestrator({ store, clients }) {
         ? ai.ai_explanation.summary
         : `AI explanation unavailable: ${ai.ai_explanation_error?.message ?? "unknown"}`,
       "",
+      "## Manual Review",
+      "",
+      latestReviewLine(evidence.review_records),
+      "",
       "## Next Checks",
       "",
       ...(ai.ai_explanation?.next_checks ?? ["Review the structured evidence manually."]).map((check) => `- ${check}`)
@@ -429,6 +484,20 @@ export function createChronofactOrchestrator({ store, clients }) {
         content: lines.join("\n")
       }
     };
+  }
+
+  function latestReviewLine(reviewRecords = []) {
+    const latestReview = reviewRecords.at(-1);
+    if (!latestReview) {
+      return "No manual review has been recorded yet.";
+    }
+
+    return [
+      `- Decision: ${latestReview.decision}`,
+      `- Reviewer: ${latestReview.reviewer_id}`,
+      `- Summary: ${latestReview.summary || "none"}`,
+      `- Notes: ${latestReview.notes || "none"}`
+    ].join("\n");
   }
 
   async function explainSafely({ verificationResult, assetVersion, versionHistory = [], scenario }) {
@@ -458,6 +527,7 @@ export function createChronofactOrchestrator({ store, clients }) {
 
   return {
     createWorkspace,
+    updateWorkspaceStatus,
     listWorkspaces: (filters) => store.listWorkspaces(filters),
     describeWorkspace: (workspaceId) => store.describeWorkspace(workspaceId),
     submit,
@@ -468,6 +538,9 @@ export function createChronofactOrchestrator({ store, clients }) {
     listEvidence,
     describeEvidence,
     exportVersionReport,
+    createReview,
+    listReviews: (filters) => ({ reviews: store.listReviewRecords(filters) }),
+    listAuditLog: (filters) => ({ audit_log: store.listAuditLogs(filters) }),
     explainFact,
     explainTrace,
     explainRisk,

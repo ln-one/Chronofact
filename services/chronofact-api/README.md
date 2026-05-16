@@ -185,6 +185,43 @@ state, AI explanation, and reviewer next checks.
 curl -s http://localhost:3001/versions/ver_001/report
 ```
 
+### `POST /versions/:version_id/reviews`
+
+Records a manual review decision for a version. This is intentionally separate
+from AI explanation and does not change proof data.
+
+```bash
+curl -s http://localhost:3001/versions/ver_001/reviews \
+  -H "content-type: application/json" \
+  -d '{"decision":"needs_revision","summary":"Missing screenshot","notes":"Ask for result evidence.","next_checks":["Upload screenshot"]}'
+```
+
+Allowed decisions: `approved`, `needs_revision`, `rejected`, and `pending`.
+
+### `GET /versions/:version_id/reviews`
+
+Lists manual review records for one version.
+
+### `GET /reviews`
+
+Lists manual review records. Optional filters: `workspace_id`, `asset_id`,
+`version_id`, `decision`, `reviewer_id`, `created_from`, and `created_to`.
+
+### `POST /workspaces/:workspace_id/status`
+
+Updates a workspace status and writes an audit event.
+
+```bash
+curl -s http://localhost:3001/workspaces/ws_001/status \
+  -H "content-type: application/json" \
+  -d '{"status":"under_review"}'
+```
+
+### `GET /audit-log`
+
+Lists audit events. Optional filters: `workspace_id`, `asset_id`, `version_id`,
+`action`, `created_from`, and `created_to`.
+
 ### `GET /assets`
 
 Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, `q`,
@@ -287,6 +324,8 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 - Retrieval flow: `GET /assets?verification_status=verified`, `GET /evidence`,
   then `GET /versions/:id/evidence`.
 - Verification report: `GET /versions/:id/report`.
+- Manual review: `POST /versions/:id/reviews`, then `GET /reviews` and
+  `GET /audit-log?action=review_record_created`.
 - Normal submission: `POST /assets`, then `POST /verify` with the same content.
 - Tampered file: `POST /verify` with different content.
 - Missing proof: `POST /verify` with `scenario=proof_missing`.

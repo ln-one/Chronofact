@@ -6,12 +6,14 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
   const versions = new Map();
   const uploads = new Map();
   const preservationRecords = new Map();
+  const reviewRecords = new Map();
   const auditLogs = [];
   let workspaceCounter = 1;
   let assetCounter = 1;
   let versionCounter = 1;
   let uploadCounter = 1;
   let preservationCounter = 1;
+  let reviewCounter = 1;
   let auditCounter = 1;
 
   function nextId(prefix, counter) {
@@ -52,6 +54,22 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         target_type: "workspace",
         target_id: workspaceId,
         summary: `Workspace ${title} was created.`
+      });
+      return workspace;
+    },
+
+    updateWorkspaceStatus({ workspaceId, status, actorId }) {
+      const workspace = this.requireWorkspace(workspaceId);
+      const previousStatus = workspace.status;
+      workspace.status = status;
+      workspace.updated_at = clock().toISOString();
+      this.appendAudit({
+        workspaceId,
+        actorId,
+        action: "workspace_status_updated",
+        target_type: "workspace",
+        target_id: workspaceId,
+        summary: `Workspace status changed from ${previousStatus} to ${status}.`
       });
       return workspace;
     },
@@ -236,6 +254,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         fact_id: null,
         receipt_id: null,
         previous_fact_id: previousVersion?.fact_id ?? null,
+        review_ids: [],
         created_at: clock().toISOString()
       };
 
@@ -342,6 +361,74 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       });
     },
 
+    createReviewRecord({
+      versionId,
+      reviewerId,
+      decision,
+      summary = "",
+      notes = "",
+      nextChecks = []
+    }) {
+      const version = this.requireVersion(versionId);
+      const asset = this.requireAsset(version.asset_id);
+      const reviewId = nextId("rev", reviewCounter++);
+      const review = {
+        review_id: reviewId,
+        workspace_id: asset.workspace_id,
+        asset_id: asset.asset_id,
+        version_id: version.version_id,
+        reviewer_id: reviewerId,
+        decision,
+        summary,
+        notes,
+        next_checks: Array.isArray(nextChecks) ? nextChecks : [],
+        created_at: clock().toISOString()
+      };
+      reviewRecords.set(reviewId, review);
+      version.review_ids.push(reviewId);
+      this.appendAudit({
+        workspaceId: asset.workspace_id,
+        assetId: asset.asset_id,
+        versionId: version.version_id,
+        actorId: reviewerId,
+        action: "review_record_created",
+        target_type: "review_record",
+        target_id: reviewId,
+        summary: `Manual review ${reviewId} recorded decision ${decision}.`
+      });
+      return review;
+    },
+
+    listReviewRecords({
+      workspaceId,
+      assetId,
+      versionId,
+      decision,
+      reviewerId,
+      createdFrom,
+      createdTo
+    } = {}) {
+      if (workspaceId) {
+        this.requireWorkspace(workspaceId);
+      }
+      if (assetId) {
+        this.requireAsset(assetId);
+      }
+      if (versionId) {
+        this.requireVersion(versionId);
+      }
+
+      return Array.from(reviewRecords.values()).filter((review) => {
+        if (workspaceId && review.workspace_id !== workspaceId) return false;
+        if (assetId && review.asset_id !== assetId) return false;
+        if (versionId && review.version_id !== versionId) return false;
+        if (decision && review.decision !== decision) return false;
+        if (reviewerId && review.reviewer_id !== reviewerId) return false;
+        if ((createdFrom || createdTo) && !isWithinDateRange(review.created_at, createdFrom, createdTo)) return false;
+        return true;
+      });
+    },
+
     appendAudit({
       workspaceId = null,
       assetId = null,
@@ -368,11 +455,13 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return entry;
     },
 
-    listAuditLogs({ workspaceId, assetId, versionId } = {}) {
+    listAuditLogs({ workspaceId, assetId, versionId, action, createdFrom, createdTo } = {}) {
       return auditLogs.filter((entry) => {
         if (workspaceId && entry.workspace_id !== workspaceId) return false;
         if (assetId && entry.asset_id !== assetId) return false;
         if (versionId && entry.version_id !== versionId) return false;
+        if (action && entry.action !== action) return false;
+        if ((createdFrom || createdTo) && !isWithinDateRange(entry.created_at, createdFrom, createdTo)) return false;
         return true;
       });
     },
@@ -405,6 +494,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         asset_version: version,
         preservation_record: record,
         witness_record: version.witness_record ?? null,
+        review_records: this.listReviewRecords({ versionId: version.version_id }),
         audit_log: this.listAuditLogs({ assetId: asset.asset_id, versionId: version.version_id })
       };
     },
