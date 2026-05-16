@@ -98,6 +98,35 @@ function createHandler(orchestrator) {
         });
       }
 
+      if (request.method === "POST" && url.pathname === "/ai/explain/fact") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainFact({
+          asset_id: body.asset_id,
+          version_id: body.version_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/explain/trace") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainTrace({
+          asset_id: body.asset_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/explain/risk") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainRisk({
+          asset_id: body.asset_id,
+          version_id: body.version_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
       if (request.method === "POST" && url.pathname === "/assets") {
         const body = await readJson(request);
         const result = await orchestrator.submit({

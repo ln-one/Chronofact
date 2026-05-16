@@ -103,6 +103,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     const ai = await explainSafely({
       verificationResult,
       assetVersion: witnessedVersion,
+      versionHistory: store.listVersions(witnessedVersion.asset_id),
       scenario
     });
 
@@ -158,6 +159,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     const ai = await explainSafely({
       verificationResult,
       assetVersion,
+      versionHistory: store.listVersions(assetVersion.asset_id),
       scenario
     });
     store.appendAudit({
@@ -176,6 +178,115 @@ export function createChronofactOrchestrator({ store, clients }) {
       verification_result: verificationResult,
       ...ai
     };
+  }
+
+  async function explainFact({ asset_id, version_id, scenario } = {}) {
+    const assetVersion = resolveVersion({ asset_id, version_id });
+    const verificationResult = await clients.chronestia.verifyVersion({
+      assetVersion,
+      scenario
+    });
+    const ai = await explainSafely({
+      verificationResult,
+      assetVersion,
+      versionHistory: store.listVersions(assetVersion.asset_id),
+      scenario
+    });
+
+    return {
+      explanation_type: "fact",
+      asset_version: assetVersion,
+      verification_result: verificationResult,
+      ...ai
+    };
+  }
+
+  async function explainTrace({ asset_id, scenario } = {}) {
+    if (!asset_id) {
+      throw new ChronofactError("invalid_request", "asset_id is required.", 400);
+    }
+
+    const asset = store.describeAsset(asset_id);
+    const latestVersion = asset.versions.at(-1);
+    if (!latestVersion) {
+      throw new ChronofactError("version_not_found", "No version exists for the requested asset.", 404);
+    }
+
+    const verificationResult = await clients.chronestia.verifyVersion({
+      assetVersion: latestVersion,
+      scenario
+    });
+    const versionHistory = asset.versions.map((version) => ({
+      version_id: version.version_id,
+      version_no: version.version_no,
+      previous_version_id: version.previous_version_id,
+      sha256: version.sha256,
+      fact_id: version.fact_id,
+      receipt_id: version.receipt_id,
+      created_at: version.created_at
+    }));
+    const ai = await explainSafely({
+      verificationResult,
+      assetVersion: latestVersion,
+      versionHistory,
+      scenario
+    });
+
+    return {
+      explanation_type: "trace",
+      trace: {
+        asset_id,
+        version_count: versionHistory.length,
+        latest_version_id: latestVersion.version_id,
+        versions: versionHistory
+      },
+      verification_result: verificationResult,
+      ...ai
+    };
+  }
+
+  async function explainRisk({ asset_id, version_id, scenario } = {}) {
+    const factExplanation = await explainFact({ asset_id, version_id, scenario });
+    const verification = factExplanation.verification_result;
+    const severityByStatus = {
+      verified: "low",
+      pending: "medium",
+      unsupported: "medium",
+      failed: "high"
+    };
+
+    return {
+      explanation_type: "risk",
+      risk_summary: {
+        status: verification.status,
+        severity: severityByStatus[verification.status] ?? "unknown",
+        failure_reason: verification.failure_reason,
+        digest_match: verification.digest_match,
+        requires_manual_review: verification.status !== "verified"
+      },
+      asset_version: factExplanation.asset_version,
+      verification_result: verification,
+      ai_explanation: factExplanation.ai_explanation,
+      ...(factExplanation.ai_explanation_error
+        ? { ai_explanation_error: factExplanation.ai_explanation_error }
+        : {})
+    };
+  }
+
+  function resolveVersion({ asset_id, version_id } = {}) {
+    if (!asset_id && !version_id) {
+      throw new ChronofactError("invalid_request", "asset_id or version_id is required.", 400);
+    }
+
+    const assetVersion = version_id
+      ? store.requireVersion(version_id)
+      : store.latestVersion(asset_id);
+
+    if (!assetVersion) {
+      throw new ChronofactError("version_not_found", "No version exists for the requested asset.", 404);
+    }
+
+    return assetVersion;
   }
 
   function exportWorkspaceReport(workspaceId) {
@@ -226,12 +337,13 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
-  async function explainSafely({ verificationResult, assetVersion, scenario }) {
+  async function explainSafely({ verificationResult, assetVersion, versionHistory = [], scenario }) {
     try {
       return {
         ai_explanation: await clients.ai.explain({
           verificationResult,
           assetVersion,
+          versionHistory,
           scenario
         })
       };
@@ -259,6 +371,9 @@ export function createChronofactOrchestrator({ store, clients }) {
     verify,
     listAssets: (filters) => store.listAssets(filters),
     exportWorkspaceReport,
+    explainFact,
+    explainTrace,
+    explainRisk,
     describeAsset: (assetId) => store.describeAsset(assetId)
   };
 }

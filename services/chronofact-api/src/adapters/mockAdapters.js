@@ -105,7 +105,7 @@ export function createChronestiaMockAdapter({ clock = () => new Date() } = {}) {
 
 export function createAiExplanationMockAdapter() {
   return {
-    async explain({ verificationResult, assetVersion, scenario }) {
+    async explain({ verificationResult, assetVersion, versionHistory = [], scenario }) {
       if (scenario === "ai_unavailable") {
         throw new ChronofactError(
           "ai_explanation_unavailable",
@@ -121,10 +121,17 @@ export function createAiExplanationMockAdapter() {
         "trace status",
         "verification result"
       ];
+      if (versionHistory.length > 0) {
+        basis.push("version history");
+      }
+
+      const versionContext = versionHistory.length > 1
+        ? ` The asset has ${versionHistory.length} linked versions in its trace.`
+        : "";
 
       if (verificationResult.failure_reason === "digest_mismatch") {
         return {
-          summary: `Version ${assetVersion.version_no} digest does not match the recorded value.`,
+          summary: `Version ${assetVersion.version_no} digest does not match the recorded value.${versionContext}`,
           risks: ["The submitted file may have been modified after registration."],
           next_checks: ["Ask a reviewer to compare the file with the originally submitted artifact."],
           confidence_note: "AI explanation is not proof; proof comes from structured receipts and verification results.",
@@ -134,7 +141,7 @@ export function createAiExplanationMockAdapter() {
 
       if (verificationResult.failure_reason === "proof_missing") {
         return {
-          summary: `Version ${assetVersion.version_no} has no available proof yet.`,
+          summary: `Version ${assetVersion.version_no} has no available proof yet.${versionContext}`,
           risks: ["The record cannot be treated as fully witnessed until proof is available."],
           next_checks: ["Retry verification after the witness service returns a receipt or trace."],
           confidence_note: "AI explanation is not proof; proof comes from structured receipts and verification results.",
@@ -144,7 +151,7 @@ export function createAiExplanationMockAdapter() {
 
       if (verificationResult.failure_reason === "chain_unavailable") {
         return {
-          summary: `Version ${assetVersion.version_no} cannot be verified because the chain adapter is unavailable.`,
+          summary: `Version ${assetVersion.version_no} cannot be verified because the chain adapter is unavailable.${versionContext}`,
           risks: ["The current result is an access failure, not a successful notarization."],
           next_checks: ["Check the chain or Chronestia adapter and retry verification."],
           confidence_note: "AI explanation is not proof; proof comes from structured receipts and verification results.",
@@ -153,7 +160,7 @@ export function createAiExplanationMockAdapter() {
       }
 
       return {
-        summary: `Version ${assetVersion.version_no} is registered and the current digest matches the recorded value.`,
+        summary: `Version ${assetVersion.version_no} is registered and the current digest matches the recorded value.${versionContext}`,
         risks: [],
         next_checks: ["A human reviewer should still check whether the file content satisfies submission requirements."],
         confidence_note: "AI explanation is not proof; proof comes from structured receipts and verification results.",
@@ -162,4 +169,3 @@ export function createAiExplanationMockAdapter() {
     }
   };
 }
-

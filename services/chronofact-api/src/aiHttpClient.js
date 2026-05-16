@@ -12,7 +12,7 @@ export function createAiExplanationHttpClient({
   const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
 
   return {
-    async explain({ verificationResult, assetVersion, scenario }) {
+    async explain({ verificationResult, assetVersion, versionHistory = [], scenario }) {
       if (scenario === "ai_unavailable") {
         throw new ChronofactError(
           "ai_explanation_unavailable",
@@ -30,7 +30,7 @@ export function createAiExplanationHttpClient({
           headers: {
             "content-type": "application/json"
           },
-          body: JSON.stringify(toEvidencePayload({ verificationResult, assetVersion })),
+          body: JSON.stringify(toEvidencePayload({ verificationResult, assetVersion, versionHistory })),
           signal: controller.signal
         });
 
@@ -60,7 +60,7 @@ export function createAiExplanationHttpClient({
   };
 }
 
-function toEvidencePayload({ verificationResult, assetVersion }) {
+function toEvidencePayload({ verificationResult, assetVersion, versionHistory = [] }) {
   const witness = assetVersion.witness_record ?? {};
   return {
     asset_version: {
@@ -83,6 +83,14 @@ function toEvidencePayload({ verificationResult, assetVersion }) {
       status: verificationResult.trace_status,
       previous_fact_id: assetVersion.previous_fact_id
     },
+    version_history: versionHistory.map((version) => ({
+      version_id: version.version_id,
+      version_no: version.version_no,
+      previous_version_id: version.previous_version_id,
+      sha256: version.sha256,
+      fact_id: version.fact_id,
+      receipt_id: version.receipt_id
+    })),
     verification_result: verificationResult
   };
 }

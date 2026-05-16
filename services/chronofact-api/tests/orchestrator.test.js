@@ -121,6 +121,44 @@ test("workspace reports summarize assets, digests, verification, and audit event
   assert.match(report.report.content, /preservation_record_created/);
 });
 
+test("AI explanation endpoints explain facts, traces, and risk from structured evidence", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const v1 = await orchestrator.submit({
+    filename: "report-v1.pdf",
+    content: { content_text: "v1" }
+  });
+  const v2 = await orchestrator.createVersion({
+    asset_id: v1.asset_version.asset_id,
+    filename: "report-v2.pdf",
+    content: { content_text: "v2" }
+  });
+
+  const fact = await orchestrator.explainFact({
+    version_id: v2.asset_version.version_id
+  });
+  assert.equal(fact.explanation_type, "fact");
+  assert.equal(fact.verification_result.status, "verified");
+  assert.match(fact.ai_explanation.summary, /Version 2/);
+
+  const trace = await orchestrator.explainTrace({
+    asset_id: v1.asset_version.asset_id
+  });
+  assert.equal(trace.explanation_type, "trace");
+  assert.equal(trace.trace.version_count, 2);
+  assert.equal(trace.trace.versions[1].previous_version_id, v1.asset_version.version_id);
+  assert.ok(trace.ai_explanation.evidence_basis.includes("version history"));
+
+  const risk = await orchestrator.explainRisk({
+    version_id: v2.asset_version.version_id,
+    scenario: "proof_missing"
+  });
+  assert.equal(risk.explanation_type, "risk");
+  assert.equal(risk.risk_summary.severity, "medium");
+  assert.equal(risk.risk_summary.requires_manual_review, true);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

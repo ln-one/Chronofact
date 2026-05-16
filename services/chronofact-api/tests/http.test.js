@@ -88,6 +88,41 @@ test("HTTP API supports workspace-scoped submission, listing, and report export"
   assert.match(reportBody.report.content, /Latest digest:/);
 });
 
+test("HTTP API exposes explicit AI explanation endpoints", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const created = await postJson(`${baseUrl}/assets`, {
+    filename: "report-v1.pdf",
+    content_text: "v1"
+  });
+  const v2 = await postJson(`${baseUrl}/assets/${created.body.asset_version.asset_id}/versions`, {
+    filename: "report-v2.pdf",
+    content_text: "v2"
+  });
+
+  const fact = await postJson(`${baseUrl}/ai/explain/fact`, {
+    version_id: v2.body.asset_version.version_id
+  });
+  assert.equal(fact.status, 200);
+  assert.equal(fact.body.explanation_type, "fact");
+  assert.equal(fact.body.verification_result.status, "verified");
+
+  const trace = await postJson(`${baseUrl}/ai/explain/trace`, {
+    asset_id: created.body.asset_version.asset_id
+  });
+  assert.equal(trace.status, 200);
+  assert.equal(trace.body.trace.version_count, 2);
+  assert.equal(trace.body.trace.versions[1].previous_version_id, created.body.asset_version.version_id);
+
+  const risk = await postJson(`${baseUrl}/ai/explain/risk`, {
+    version_id: v2.body.asset_version.version_id,
+    scenario: "chain_unavailable"
+  });
+  assert.equal(risk.status, 200);
+  assert.equal(risk.body.risk_summary.severity, "medium");
+  assert.equal(risk.body.risk_summary.failure_reason, "chain_unavailable");
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

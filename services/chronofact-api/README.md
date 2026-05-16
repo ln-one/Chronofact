@@ -195,6 +195,38 @@ curl -s http://localhost:3001/verify \
   -d '{"version_id":"ver_001","content_text":"first version"}'
 ```
 
+### `POST /ai/explain/fact`
+
+Explains a single registered asset version from structured evidence. This
+endpoint does not require the original file.
+
+```bash
+curl -s http://localhost:3001/ai/explain/fact \
+  -H "content-type: application/json" \
+  -d '{"version_id":"ver_001"}'
+```
+
+### `POST /ai/explain/trace`
+
+Explains an asset version timeline, including previous-version links.
+
+```bash
+curl -s http://localhost:3001/ai/explain/trace \
+  -H "content-type: application/json" \
+  -d '{"asset_id":"asset_001"}'
+```
+
+### `POST /ai/explain/risk`
+
+Returns a reviewer-facing risk summary plus AI explanation for a version. It is
+an interpretation layer, not a proof source.
+
+```bash
+curl -s http://localhost:3001/ai/explain/risk \
+  -H "content-type: application/json" \
+  -d '{"version_id":"ver_001","scenario":"proof_missing"}'
+```
+
 ## Failure Scenarios
 
 Each scenario can be passed as a query string or JSON field named `scenario`.
@@ -228,6 +260,8 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 - AI unavailable: `POST /verify` with `scenario=ai_unavailable`.
 - Multi-version timeline: `POST /assets`, `POST /assets/:asset_id/versions`,
   then `GET /assets/:asset_id`.
+- Explicit AI explanation: `POST /ai/explain/fact`,
+  `POST /ai/explain/trace`, and `POST /ai/explain/risk`.
 
 AI explanation fields are interpreter output only. The proof source remains the
 SHA-256 digest, receipt status, trace status, and verification result.
