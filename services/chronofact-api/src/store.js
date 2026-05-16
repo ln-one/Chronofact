@@ -1,31 +1,102 @@
 import { ChronofactError } from "./errors.js";
 
 export function createInMemoryStore({ clock = () => new Date() } = {}) {
+  const workspaces = new Map();
   const assets = new Map();
   const versions = new Map();
   const uploads = new Map();
+  const preservationRecords = new Map();
+  const auditLogs = [];
+  let workspaceCounter = 1;
   let assetCounter = 1;
   let versionCounter = 1;
   let uploadCounter = 1;
+  let preservationCounter = 1;
+  let auditCounter = 1;
 
   function nextId(prefix, counter) {
     return `${prefix}_${String(counter).padStart(3, "0")}`;
   }
 
   return {
+    createWorkspace({
+      title,
+      workspaceType = "experiment",
+      description = "",
+      status = "active",
+      ownerId
+    }) {
+      const workspaceId = nextId("ws", workspaceCounter++);
+      const workspace = {
+        workspace_id: workspaceId,
+        title,
+        workspace_type: workspaceType,
+        description,
+        status,
+        owner_id: ownerId,
+        created_at: clock().toISOString(),
+        asset_ids: []
+      };
+      workspaces.set(workspaceId, workspace);
+      this.appendAudit({
+        workspaceId,
+        actorId: ownerId,
+        action: "workspace_created",
+        target_type: "workspace",
+        target_id: workspaceId,
+        summary: `Workspace ${title} was created.`
+      });
+      return workspace;
+    },
+
+    listWorkspaces({ status, workspaceType, query } = {}) {
+      const normalizedQuery = query ? String(query).toLowerCase() : null;
+      return Array.from(workspaces.values()).filter((workspace) => {
+        if (status && workspace.status !== status) return false;
+        if (workspaceType && workspace.workspace_type !== workspaceType) return false;
+        if (
+          normalizedQuery &&
+          !`${workspace.title} ${workspace.description}`.toLowerCase().includes(normalizedQuery)
+        ) {
+          return false;
+        }
+        return true;
+      });
+    },
+
+    getWorkspace(workspaceId) {
+      return workspaces.get(workspaceId) ?? null;
+    },
+
+    requireWorkspace(workspaceId) {
+      const workspace = workspaces.get(workspaceId);
+      if (!workspace) {
+        throw new ChronofactError("workspace_not_found", `Workspace ${workspaceId} was not found.`, 404);
+      }
+      return workspace;
+    },
+
     allocateUploadId() {
       return nextId("upl", uploadCounter++);
     },
 
-    createAsset({ assetType }) {
+    createAsset({ assetType, workspaceId = null, title = null, createdBy = null }) {
+      const workspace = workspaceId ? this.requireWorkspace(workspaceId) : null;
       const assetId = nextId("asset", assetCounter++);
       const asset = {
         asset_id: assetId,
+        workspace_id: workspace?.workspace_id ?? null,
+        title: title ?? null,
         asset_type: assetType,
+        status: "active",
+        created_by: createdBy,
         created_at: clock().toISOString(),
         version_ids: []
       };
       assets.set(assetId, asset);
+      if (workspace) {
+        workspace.asset_ids.push(assetId);
+      }
       return asset;
     },
 
@@ -64,6 +135,27 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return asset.version_ids.map((id) => versions.get(id));
     },
 
+    listAssets({ workspaceId, status, assetType, query } = {}) {
+      if (workspaceId) {
+        this.requireWorkspace(workspaceId);
+      }
+      const normalizedQuery = query ? String(query).toLowerCase() : null;
+      return Array.from(assets.values())
+        .filter((asset) => {
+          if (workspaceId && asset.workspace_id !== workspaceId) return false;
+          if (status && asset.status !== status) return false;
+          if (assetType && asset.asset_type !== assetType) return false;
+          if (normalizedQuery && !`${asset.title ?? ""} ${asset.asset_type}`.toLowerCase().includes(normalizedQuery)) {
+            return false;
+          }
+          return true;
+        })
+        .map((asset) => ({
+          ...asset,
+          latest_version: asset.version_ids.length ? versions.get(asset.version_ids.at(-1)) : null
+        }));
+    },
+
     saveUpload(uploadRecord) {
       uploads.set(uploadRecord.upload_id, uploadRecord);
       return uploadRecord;
@@ -72,12 +164,30 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
     createVersion({
       assetId,
       assetType,
+      workspaceId,
+      assetTitle,
       uploadRecord,
       sha256,
       submitterId,
       previousVersionId = null
     }) {
-      const asset = assetId ? this.requireAsset(assetId) : this.createAsset({ assetType });
+      const asset = assetId
+        ? this.requireAsset(assetId)
+        : this.createAsset({
+            assetType,
+            workspaceId,
+            title: assetTitle ?? uploadRecord.filename,
+            createdBy: submitterId
+          });
+
+      if (workspaceId && asset.workspace_id !== workspaceId) {
+        throw new ChronofactError(
+          "workspace_asset_mismatch",
+          "Asset does not belong to the requested workspace.",
+          409
+        );
+      }
+
       const previousVersion = previousVersionId ? this.requireVersion(previousVersionId) : this.latestVersion(asset.asset_id);
 
       if (previousVersion && previousVersion.asset_id !== asset.asset_id) {
@@ -92,6 +202,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       const versionId = nextId("ver", versionCounter++);
       const assetVersion = {
         asset_id: asset.asset_id,
+        workspace_id: asset.workspace_id,
         asset_type: asset.asset_type,
         version_id: versionId,
         version_no: versionNo,
@@ -108,6 +219,16 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
 
       versions.set(versionId, assetVersion);
       asset.version_ids.push(versionId);
+      this.appendAudit({
+        workspaceId: asset.workspace_id,
+        assetId: asset.asset_id,
+        versionId,
+        actorId: submitterId,
+        action: versionNo === 1 ? "asset_created" : "asset_version_created",
+        target_type: "asset_version",
+        target_id: versionId,
+        summary: `Asset ${asset.asset_id} version ${versionNo} was stored and prepared for witnessing.`
+      });
       return assetVersion;
     },
 
@@ -120,11 +241,89 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return version;
     },
 
+    createPreservationRecord({ assetVersion, witnessRecord, verificationResult }) {
+      const preservationId = nextId("prv", preservationCounter++);
+      const record = {
+        preservation_id: preservationId,
+        asset_id: assetVersion.asset_id,
+        version_id: assetVersion.version_id,
+        digest_algorithm: "sha256",
+        digest: assetVersion.sha256,
+        storage_ref: assetVersion.storage_ref,
+        fact_id: witnessRecord.fact_id,
+        receipt_id: witnessRecord.receipt_id,
+        anchor_status: witnessRecord.anchor_status,
+        verification_status: verificationResult.status,
+        failure_reason: verificationResult.failure_reason,
+        created_at: clock().toISOString()
+      };
+      preservationRecords.set(preservationId, record);
+      assetVersion.preservation_record_id = preservationId;
+      assetVersion.preservation_record = record;
+      this.appendAudit({
+        workspaceId: this.requireAsset(assetVersion.asset_id).workspace_id,
+        assetId: assetVersion.asset_id,
+        versionId: assetVersion.version_id,
+        actorId: assetVersion.submitter_id,
+        action: "preservation_record_created",
+        target_type: "preservation_record",
+        target_id: preservationId,
+        summary: `Preservation record ${preservationId} was created for version ${assetVersion.version_no}.`
+      });
+      return record;
+    },
+
+    appendAudit({
+      workspaceId = null,
+      assetId = null,
+      versionId = null,
+      actorId = null,
+      action,
+      target_type,
+      target_id,
+      summary
+    }) {
+      const entry = {
+        audit_id: nextId("aud", auditCounter++),
+        workspace_id: workspaceId,
+        asset_id: assetId,
+        version_id: versionId,
+        actor_id: actorId,
+        action,
+        target_type,
+        target_id,
+        summary,
+        created_at: clock().toISOString()
+      };
+      auditLogs.push(entry);
+      return entry;
+    },
+
+    listAuditLogs({ workspaceId, assetId, versionId } = {}) {
+      return auditLogs.filter((entry) => {
+        if (workspaceId && entry.workspace_id !== workspaceId) return false;
+        if (assetId && entry.asset_id !== assetId) return false;
+        if (versionId && entry.version_id !== versionId) return false;
+        return true;
+      });
+    },
+
     describeAsset(assetId) {
       const asset = this.requireAsset(assetId);
       return {
         ...asset,
-        versions: this.listVersions(assetId)
+        versions: this.listVersions(assetId),
+        audit_log: this.listAuditLogs({ assetId })
+      };
+    },
+
+    describeWorkspace(workspaceId) {
+      const workspace = this.requireWorkspace(workspaceId);
+      const workspaceAssets = this.listAssets({ workspaceId });
+      return {
+        ...workspace,
+        assets: workspaceAssets,
+        audit_log: this.listAuditLogs({ workspaceId })
       };
     }
   };

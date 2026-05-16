@@ -73,6 +73,54 @@ test("new versions preserve previous-version links and previous fact references"
   assert.equal(asset.versions.length, 2);
 });
 
+test("workspaces group assets and expose preservation timeline data", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const createdWorkspace = await orchestrator.createWorkspace({
+    title: "Experiment 1 Delivery",
+    workspace_type: "course_project",
+    description: "Final report and evidence package"
+  });
+  const submitted = await orchestrator.submit({
+    workspace_id: createdWorkspace.workspace.workspace_id,
+    asset_title: "Final report",
+    filename: "report.pdf",
+    content: { content_text: "report content" }
+  });
+
+  assert.equal(submitted.preservation_record.digest_algorithm, "sha256");
+  assert.equal(submitted.preservation_record.verification_status, "verified");
+  assert.equal(submitted.asset_version.workspace_id, createdWorkspace.workspace.workspace_id);
+
+  const detail = orchestrator.describeWorkspace(createdWorkspace.workspace.workspace_id);
+  assert.equal(detail.assets.length, 1);
+  assert.equal(detail.assets[0].title, "Final report");
+  assert.equal(detail.assets[0].latest_version.preservation_record.verification_status, "verified");
+  assert.ok(detail.audit_log.some((entry) => entry.action === "workspace_created"));
+  assert.ok(detail.audit_log.some((entry) => entry.action === "preservation_record_created"));
+});
+
+test("workspace reports summarize assets, digests, verification, and audit events", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const createdWorkspace = await orchestrator.createWorkspace({
+    title: "Lab Report Review"
+  });
+  await orchestrator.submit({
+    workspace_id: createdWorkspace.workspace.workspace_id,
+    filename: "lab.md",
+    content: { content_text: "lab report" }
+  });
+
+  const report = orchestrator.exportWorkspaceReport(createdWorkspace.workspace.workspace_id);
+  assert.equal(report.report.format, "markdown");
+  assert.match(report.report.content, /# Lab Report Review/);
+  assert.match(report.report.content, /Latest digest:/);
+  assert.match(report.report.content, /preservation_record_created/);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

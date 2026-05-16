@@ -15,13 +15,15 @@ below to call real services.
 Implemented phase-one flow:
 
 1. resolve identity through the fixed demo Limora identity adapter
-2. accept an asset submission payload
-3. compute a stable SHA-256 digest
-4. store the original content off-chain through the Dualweave adapter
-5. create an explicit asset version record
-6. link new versions to the previous version and previous fact
-7. register the version through the Chronestia adapter
-8. verify the version and produce an AI explanation response
+2. create an experiment or delivery workspace when the demo needs grouping
+3. accept an asset submission payload
+4. compute a stable SHA-256 digest
+5. store the original content off-chain through the Dualweave adapter
+6. create an explicit asset version record
+7. link new versions to the previous version and previous fact
+8. register the version through the Chronestia adapter
+9. create a preservation record and audit timeline entry
+10. verify the version and produce an AI explanation response
 
 The demo Dualweave adapter keeps original files under `.cache/chronofact/uploads`
 at runtime. Those files are local demo artifacts and are not committed.
@@ -121,6 +123,43 @@ Returns service health.
 
 Returns the unified first-phase mock object used by all tracks.
 
+### `POST /workspaces`
+
+Creates a course-facing experiment or delivery workspace.
+
+```bash
+curl -s http://localhost:3001/workspaces \
+  -H "content-type: application/json" \
+  -d '{"title":"Experiment 1 Delivery","workspace_type":"experiment","description":"Report and evidence package"}'
+```
+
+### `GET /workspaces`
+
+Lists workspaces. Optional filters: `status`, `workspace_type`, and `q`.
+
+### `GET /workspaces/:workspace_id`
+
+Returns a workspace with its asset list and audit timeline.
+
+### `POST /workspaces/:workspace_id/assets`
+
+Creates the first version of an asset inside a workspace.
+
+```bash
+curl -s http://localhost:3001/workspaces/ws_001/assets \
+  -H "content-type: application/json" \
+  -d '{"asset_title":"Final report","filename":"report.pdf","asset_type":"lab_report","content_text":"first version"}'
+```
+
+### `GET /workspaces/:workspace_id/report`
+
+Returns a lightweight Markdown report payload for demo export and答辩.
+
+### `GET /assets`
+
+Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, and
+`q`. Each asset includes its latest version.
+
 ### `POST /assets`
 
 Creates a new asset and its first version.
@@ -180,6 +219,8 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 
 ## Demo Checklist
 
+- Workspace flow: `POST /workspaces`, then `POST /workspaces/:id/assets`, then
+  `GET /workspaces/:id/report`.
 - Normal submission: `POST /assets`, then `POST /verify` with the same content.
 - Tampered file: `POST /verify` with different content.
 - Missing proof: `POST /verify` with `scenario=proof_missing`.

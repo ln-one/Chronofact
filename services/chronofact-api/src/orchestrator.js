@@ -5,8 +5,43 @@ import { assertChronofactAdapters } from "./adapters/contracts.js";
 export function createChronofactOrchestrator({ store, clients }) {
   clients = assertChronofactAdapters(clients);
 
-  async function submit({ filename, asset_type = "lab_report", content, scenario } = {}) {
+  async function createWorkspace({
+    title,
+    workspace_type = "experiment",
+    description = "",
+    status = "active",
+    scenario
+  } = {}) {
+    if (!title) {
+      throw new ChronofactError("invalid_request", "title is required.", 400);
+    }
+
+    const identityContext = await clients.limora.resolveIdentity({ scenario });
+    const workspace = store.createWorkspace({
+      title,
+      workspaceType: workspace_type,
+      description,
+      status,
+      ownerId: identityContext.user_id
+    });
+
+    return {
+      identity_context: identityContext,
+      workspace
+    };
+  }
+
+  async function submit({
+    workspace_id,
+    asset_title,
+    filename,
+    asset_type = "lab_report",
+    content,
+    scenario
+  } = {}) {
     return createVersion({
+      workspace_id,
+      asset_title,
       filename,
       asset_type,
       content,
@@ -14,7 +49,15 @@ export function createChronofactOrchestrator({ store, clients }) {
     });
   }
 
-  async function createVersion({ asset_id, filename, asset_type = "lab_report", content, scenario } = {}) {
+  async function createVersion({
+    workspace_id,
+    asset_id,
+    asset_title,
+    filename,
+    asset_type = "lab_report",
+    content,
+    scenario
+  } = {}) {
     if (!filename) {
       throw new ChronofactError("invalid_request", "filename is required.", 400);
     }
@@ -35,6 +78,8 @@ export function createChronofactOrchestrator({ store, clients }) {
     const assetVersion = store.createVersion({
       assetId: asset_id,
       assetType: asset_type,
+      workspaceId: workspace_id,
+      assetTitle: asset_title,
       uploadRecord,
       sha256,
       submitterId: identityContext.user_id
@@ -50,6 +95,11 @@ export function createChronofactOrchestrator({ store, clients }) {
       assetVersion: witnessedVersion,
       scenario
     });
+    const preservationRecord = store.createPreservationRecord({
+      assetVersion: witnessedVersion,
+      witnessRecord,
+      verificationResult
+    });
     const ai = await explainSafely({
       verificationResult,
       assetVersion: witnessedVersion,
@@ -61,6 +111,7 @@ export function createChronofactOrchestrator({ store, clients }) {
       upload_record: uploadRecord,
       asset_version: witnessedVersion,
       witness_record: witnessRecord,
+      preservation_record: preservationRecord,
       verification_result: verificationResult,
       ...ai
     };
@@ -109,11 +160,69 @@ export function createChronofactOrchestrator({ store, clients }) {
       assetVersion,
       scenario
     });
+    store.appendAudit({
+      workspaceId: store.requireAsset(assetVersion.asset_id).workspace_id,
+      assetId: assetVersion.asset_id,
+      versionId: assetVersion.version_id,
+      actorId: assetVersion.submitter_id,
+      action: "asset_version_verified",
+      target_type: "asset_version",
+      target_id: assetVersion.version_id,
+      summary: `Version ${assetVersion.version_no} verification finished with status ${verificationResult.status}.`
+    });
 
     return {
       asset_version: assetVersion,
       verification_result: verificationResult,
       ...ai
+    };
+  }
+
+  function exportWorkspaceReport(workspaceId) {
+    const workspace = store.describeWorkspace(workspaceId);
+    const lines = [
+      `# ${workspace.title}`,
+      "",
+      `- Workspace ID: ${workspace.workspace_id}`,
+      `- Type: ${workspace.workspace_type}`,
+      `- Status: ${workspace.status}`,
+      `- Assets: ${workspace.assets.length}`,
+      "",
+      "## Assets"
+    ];
+
+    if (workspace.assets.length === 0) {
+      lines.push("", "No assets have been submitted yet.");
+    }
+
+    for (const asset of workspace.assets) {
+      const latest = asset.latest_version;
+      lines.push(
+        "",
+        `### ${asset.title ?? asset.asset_id}`,
+        "",
+        `- Asset ID: ${asset.asset_id}`,
+        `- Type: ${asset.asset_type}`,
+        `- Latest version: ${latest?.version_no ?? "none"}`,
+        `- Latest digest: ${latest?.sha256 ?? "none"}`,
+        `- Verification: ${latest?.preservation_record?.verification_status ?? "not_verified"}`
+      );
+    }
+
+    lines.push(
+      "",
+      "## Audit Timeline",
+      "",
+      ...workspace.audit_log.map((entry) => `- ${entry.created_at} ${entry.action}: ${entry.summary}`)
+    );
+
+    return {
+      workspace,
+      report: {
+        format: "markdown",
+        generated_at: new Date().toISOString(),
+        content: lines.join("\n")
+      }
     };
   }
 
@@ -142,9 +251,14 @@ export function createChronofactOrchestrator({ store, clients }) {
   }
 
   return {
+    createWorkspace,
+    listWorkspaces: (filters) => store.listWorkspaces(filters),
+    describeWorkspace: (workspaceId) => store.describeWorkspace(workspaceId),
     submit,
     createVersion,
     verify,
+    listAssets: (filters) => store.listAssets(filters),
+    exportWorkspaceReport,
     describeAsset: (assetId) => store.describeAsset(assetId)
   };
 }

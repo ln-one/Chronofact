@@ -41,9 +41,68 @@ function createHandler(orchestrator) {
         return sendJson(response, 200, MOCK_CONTRACT);
       }
 
+      if (request.method === "GET" && url.pathname === "/workspaces") {
+        return sendJson(response, 200, {
+          workspaces: orchestrator.listWorkspaces({
+            status: url.searchParams.get("status") ?? undefined,
+            workspaceType: url.searchParams.get("workspace_type") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined
+          })
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/workspaces") {
+        const body = await readJson(request);
+        const result = await orchestrator.createWorkspace({
+          title: body.title,
+          workspace_type: body.workspace_type,
+          description: body.description,
+          status: body.status,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      const workspaceAssetMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/assets$/);
+      if (request.method === "POST" && workspaceAssetMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.submit({
+          workspace_id: workspaceAssetMatch[1],
+          asset_title: body.asset_title ?? body.title,
+          filename: body.filename,
+          asset_type: body.asset_type,
+          content: body,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      const workspaceReportMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/report$/);
+      if (request.method === "GET" && workspaceReportMatch) {
+        return sendJson(response, 200, orchestrator.exportWorkspaceReport(workspaceReportMatch[1]));
+      }
+
+      const workspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)$/);
+      if (request.method === "GET" && workspaceMatch) {
+        return sendJson(response, 200, orchestrator.describeWorkspace(workspaceMatch[1]));
+      }
+
+      if (request.method === "GET" && url.pathname === "/assets") {
+        return sendJson(response, 200, {
+          assets: orchestrator.listAssets({
+            workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+            status: url.searchParams.get("status") ?? undefined,
+            assetType: url.searchParams.get("asset_type") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined
+          })
+        });
+      }
+
       if (request.method === "POST" && url.pathname === "/assets") {
         const body = await readJson(request);
         const result = await orchestrator.submit({
+          workspace_id: body.workspace_id,
+          asset_title: body.asset_title ?? body.title,
           filename: body.filename,
           asset_type: body.asset_type,
           content: body,
@@ -57,6 +116,7 @@ function createHandler(orchestrator) {
         const body = await readJson(request);
         const result = await orchestrator.createVersion({
           asset_id: versionMatch[1],
+          workspace_id: body.workspace_id,
           filename: body.filename,
           asset_type: body.asset_type,
           content: body,

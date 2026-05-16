@@ -49,6 +49,45 @@ test("HTTP API supports submit, version, detail, and verify flows", async (t) =>
   assert.equal(verify.body.verification_result.failure_reason, "digest_mismatch");
 });
 
+test("HTTP API supports workspace-scoped submission, listing, and report export", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const workspace = await postJson(`${baseUrl}/workspaces`, {
+    title: "Experiment Delivery",
+    workspace_type: "experiment",
+    description: "Report, screenshot, and log evidence"
+  });
+  assert.equal(workspace.status, 201);
+  assert.equal(workspace.body.workspace.title, "Experiment Delivery");
+
+  const submitted = await postJson(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/assets`, {
+    asset_title: "Report v1",
+    filename: "report.md",
+    content_text: "first report"
+  });
+  assert.equal(submitted.status, 201);
+  assert.equal(submitted.body.asset_version.workspace_id, workspace.body.workspace.workspace_id);
+  assert.equal(submitted.body.preservation_record.verification_status, "verified");
+
+  const assets = await fetch(`${baseUrl}/assets?workspace_id=${workspace.body.workspace.workspace_id}`);
+  const assetsBody = await assets.json();
+  assert.equal(assets.status, 200);
+  assert.equal(assetsBody.assets.length, 1);
+  assert.equal(assetsBody.assets[0].latest_version.version_no, 1);
+
+  const detail = await fetch(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}`);
+  const detailBody = await detail.json();
+  assert.equal(detail.status, 200);
+  assert.equal(detailBody.assets.length, 1);
+  assert.ok(detailBody.audit_log.some((entry) => entry.action === "workspace_created"));
+
+  const report = await fetch(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/report`);
+  const reportBody = await report.json();
+  assert.equal(report.status, 200);
+  assert.match(reportBody.report.content, /# Experiment Delivery/);
+  assert.match(reportBody.report.content, /Latest digest:/);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
