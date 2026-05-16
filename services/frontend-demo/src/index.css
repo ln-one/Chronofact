@@ -4,11 +4,11 @@
 
 @layer base {
   * {
-    @apply border-slate-200;
+    border-color: #dfe8e2;
   }
 
   body {
-    @apply bg-slate-50 text-slate-800 antialiased;
+    @apply bg-[#fbfdfb] text-slate-800 antialiased;
     font-family: "Microsoft YaHei", "Noto Sans SC", Arial, sans-serif;
   }
 }

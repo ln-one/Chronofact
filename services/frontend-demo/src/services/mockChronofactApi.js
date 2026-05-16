@@ -1,3 +1,32 @@
+function createEvidenceBasis(scenario) {
+  const factId =
+    scenario.asset_version.fact_id ||
+    scenario.asset_version.version_id ||
+    scenario.proof.trace_id ||
+    `${scenario.asset_version.asset_id}:v${scenario.asset_version.version_no}`;
+  const subjectId = scenario.asset_version.asset_id || "subject_uncreated";
+  const anchorStatus =
+    scenario.verification_result.receipt_status === "available"
+      ? "anchored"
+      : scenario.verification_result.receipt_status || "unknown";
+
+  return {
+    fact_id: factId,
+    subject_id: subjectId,
+    receipt_provider: scenario.proof.receipt_id === "unavailable" ? "unavailable" : "chronestia",
+    anchor_status: anchorStatus,
+    verification_status: scenario.verification_result.status,
+    sources: ["sha256 digest", "receipt", "trace", "verification result"],
+  };
+}
+
+function withEvidenceBasis(scenario, aiExplanation = scenario.ai_explanation) {
+  return {
+    ...aiExplanation,
+    evidence_basis: aiExplanation.evidence_basis || createEvidenceBasis(scenario),
+  };
+}
+
 const scenarios = {
   normalSubmission: {
     label: "实验报告 v1",
@@ -433,6 +462,9 @@ export async function getAssetDetail(scenarioKey) {
     identity_context: scenario.identity_context,
     upload_record: scenario.upload_record,
     asset_version: scenario.asset_version,
+    verification_result: scenario.verification_result,
+    proof: scenario.proof,
+    ai_explanation: withEvidenceBasis(scenario),
     timeline: scenario.timeline,
   };
 }
@@ -474,11 +506,12 @@ export async function getVerificationResult(scenarioKey) {
 export async function getAiExplanation(scenarioKey) {
   if (apiBaseUrl && liveScenarioKey === scenarioKey && liveScenarioData) {
     return {
-      ...liveScenarioData.ai_explanation,
+      ...withEvidenceBasis(liveScenarioData),
       scenarioData: liveScenarioData,
     };
   }
-  return getScenario(scenarioKey).ai_explanation;
+  const scenario = getScenario(scenarioKey);
+  return withEvidenceBasis(scenario);
 }
 
 async function submitUploadToBackend(file, scenarioKey) {
@@ -592,14 +625,30 @@ function normalizeScenario({ fallback, base, response, detail }) {
       transaction_hash: witness.tx_hash || fallback.proof.transaction_hash,
       timestamp,
     },
-    ai_explanation: aiError
-      ? {
+    ai_explanation: withEvidenceBasis(
+      {
+        ...fallback,
+        asset_version: {
+          ...fallback.asset_version,
+          ...assetVersion,
+        },
+        verification_result: verification,
+        proof: {
+          receipt_id: assetVersion.receipt_id || witness.receipt_id || fallback.proof.receipt_id,
+          trace_id: assetVersion.fact_id || fallback.proof.trace_id,
+          transaction_hash: witness.tx_hash || fallback.proof.transaction_hash,
+          timestamp,
+        },
+      },
+      aiError
+        ? {
           summary: aiError.message,
           risks: ["AI explanation is unavailable; structured verification remains the proof source."],
           next_checks: ["Review receipt, trace, digest, and verification result manually."],
           confidence_note: "AI 解释不可用时，证明来源仍然是结构化回执与验证结果。",
         }
-      : aiExplanation,
+        : aiExplanation,
+    ),
     timeline: timelineVersions.map((version) => ({
       version: `v${version.version_no}`,
       digest: shortenDigest(version.sha256),
@@ -616,6 +665,9 @@ function pickAssetDetail(scenario) {
     identity_context: scenario.identity_context,
     upload_record: scenario.upload_record,
     asset_version: scenario.asset_version,
+    verification_result: scenario.verification_result,
+    proof: scenario.proof,
+    ai_explanation: withEvidenceBasis(scenario),
     timeline: scenario.timeline,
   };
 }
