@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { ChronofactError } from "./errors.js";
 
 export function createInMemoryStore({ clock = () => new Date() } = {}) {
@@ -25,6 +26,10 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
     if (from && value < from) return false;
     if (to && value > to) return false;
     return true;
+  }
+
+  function auditHash(entry) {
+    return createHash("sha256").update(JSON.stringify(entry)).digest("hex");
   }
 
   return {
@@ -449,8 +454,10 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         target_type,
         target_id,
         summary,
-        created_at: clock().toISOString()
+        created_at: clock().toISOString(),
+        previous_hash: auditLogs.at(-1)?.entry_hash ?? null
       };
+      entry.entry_hash = auditHash(entry);
       auditLogs.push(entry);
       return entry;
     },
@@ -464,6 +471,44 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         if ((createdFrom || createdTo) && !isWithinDateRange(entry.created_at, createdFrom, createdTo)) return false;
         return true;
       });
+    },
+
+    verifyAuditChain({ workspaceId, assetId, versionId, action, createdFrom, createdTo } = {}) {
+      let previousHash = null;
+      let firstInvalid = null;
+
+      for (const entry of auditLogs) {
+        const { entry_hash: entryHash, ...hashableEntry } = entry;
+        const expectedHash = auditHash(hashableEntry);
+        if (entry.previous_hash !== previousHash || entryHash !== expectedHash) {
+          firstInvalid = {
+            audit_id: entry.audit_id,
+            expected_previous_hash: previousHash,
+            actual_previous_hash: entry.previous_hash,
+            expected_entry_hash: expectedHash,
+            actual_entry_hash: entryHash
+          };
+          break;
+        }
+        previousHash = entryHash;
+      }
+
+      const scopedEntries = this.listAuditLogs({
+        workspaceId,
+        assetId,
+        versionId,
+        action,
+        createdFrom,
+        createdTo
+      });
+
+      return {
+        valid: firstInvalid === null,
+        checked_count: auditLogs.length,
+        scoped_count: scopedEntries.length,
+        latest_entry_hash: auditLogs.at(-1)?.entry_hash ?? null,
+        first_invalid: firstInvalid
+      };
     },
 
     describeAsset(assetId) {

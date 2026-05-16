@@ -151,6 +151,17 @@ function createHandler(orchestrator) {
         }));
       }
 
+      if (request.method === "GET" && url.pathname === "/audit-log/verify") {
+        return sendJson(response, 200, orchestrator.verifyAuditLog({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          action: url.searchParams.get("action") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
       const versionEvidenceMatch = url.pathname.match(/^\/versions\/([^/]+)\/evidence$/);
       if (request.method === "GET" && versionEvidenceMatch) {
         return sendJson(response, 200, orchestrator.describeEvidence({

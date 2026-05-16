@@ -323,6 +323,31 @@ test("workspace overview aggregates evidence, reviews, activity, and attention i
   assert.match(overview.links.overview, new RegExp(seeded.workspace.workspace_id));
 });
 
+test("audit log entries form a verifiable hash chain", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const seeded = await orchestrator.seedDemoScenario();
+  const audit = orchestrator.listAuditLog({
+    workspaceId: seeded.workspace.workspace_id
+  });
+  assert.ok(audit.audit_log.length > 0);
+  assert.equal(audit.audit_log[0].previous_hash, null);
+  assert.match(audit.audit_log[0].entry_hash, /^[a-f0-9]{64}$/);
+  assert.equal(audit.audit_log[1].previous_hash, audit.audit_log[0].entry_hash);
+
+  const integrity = orchestrator.verifyAuditLog({
+    workspaceId: seeded.workspace.workspace_id
+  });
+  assert.equal(integrity.audit_integrity.valid, true);
+  assert.equal(integrity.audit_integrity.scoped_count, audit.audit_log.length);
+  assert.equal(integrity.audit_integrity.latest_entry_hash, audit.audit_log.at(-1).entry_hash);
+
+  const overview = orchestrator.describeWorkspaceOverview(seeded.workspace.workspace_id);
+  assert.equal(overview.summary.audit_chain_valid, true);
+  assert.equal(overview.summary.latest_audit_hash, audit.audit_log.at(-1).entry_hash);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

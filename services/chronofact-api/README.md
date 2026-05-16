@@ -250,6 +250,19 @@ curl -s http://localhost:3001/workspaces/ws_001/status \
 Lists audit events. Optional filters: `workspace_id`, `asset_id`, `version_id`,
 `action`, `created_from`, and `created_to`.
 
+Each audit event includes `previous_hash` and `entry_hash` so the timeline can
+be shown as a lightweight tamper-evident chain for the course demo.
+
+### `GET /audit-log/verify`
+
+Verifies the audit log hash chain and returns `valid`, `checked_count`,
+`scoped_count`, `latest_entry_hash`, and the first invalid entry if one is
+detected.
+
+```bash
+curl -s "http://localhost:3001/audit-log/verify?workspace_id=ws_001"
+```
+
 ### `GET /assets`
 
 Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, `q`,
@@ -357,6 +370,7 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 - Verification report: `GET /versions/:id/report`.
 - Manual review: `POST /versions/:id/reviews`, then `GET /reviews` and
   `GET /audit-log?action=review_record_created`.
+- Audit integrity: `GET /audit-log/verify?workspace_id=:id`.
 - Normal submission: `POST /assets`, then `POST /verify` with the same content.
 - Tampered file: `POST /verify` with different content.
 - Missing proof: `POST /verify` with `scenario=proof_missing`.

@@ -297,6 +297,29 @@ test("HTTP API returns workspace overview for dashboard display", async (t) => {
   assert.match(overviewBody.links.workspace_report, new RegExp(seeded.body.workspace.workspace_id));
 });
 
+test("HTTP API verifies audit log hash-chain integrity", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const seeded = await postJson(`${baseUrl}/demo/seed`, {});
+  const audit = await fetch(`${baseUrl}/audit-log?workspace_id=${seeded.body.workspace.workspace_id}`);
+  const auditBody = await audit.json();
+  assert.equal(audit.status, 200);
+  assert.match(auditBody.audit_log[0].entry_hash, /^[a-f0-9]{64}$/);
+  assert.equal(auditBody.audit_log[1].previous_hash, auditBody.audit_log[0].entry_hash);
+
+  const integrity = await fetch(`${baseUrl}/audit-log/verify?workspace_id=${seeded.body.workspace.workspace_id}`);
+  const integrityBody = await integrity.json();
+  assert.equal(integrity.status, 200);
+  assert.equal(integrityBody.audit_integrity.valid, true);
+  assert.equal(integrityBody.audit_integrity.scoped_count, auditBody.audit_log.length);
+  assert.equal(integrityBody.audit_integrity.latest_entry_hash, auditBody.audit_log.at(-1).entry_hash);
+
+  const overview = await fetch(`${baseUrl}${seeded.body.demo_links.overview}`);
+  const overviewBody = await overview.json();
+  assert.equal(overviewBody.summary.audit_chain_valid, true);
+  assert.equal(overviewBody.summary.latest_audit_hash, auditBody.audit_log.at(-1).entry_hash);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

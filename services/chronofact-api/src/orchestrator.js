@@ -418,6 +418,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     const evidence = store.listPreservationRecords({ workspaceId });
     const reviews = store.listReviewRecords({ workspaceId });
     const auditLog = store.listAuditLogs({ workspaceId });
+    const auditIntegrity = store.verifyAuditChain({ workspaceId });
     const versionCount = workspace.assets.reduce((count, asset) => count + asset.version_ids.length, 0);
     const verificationStatusCounts = countBy(evidence, "verification_status");
     const failureReasonCounts = countBy(evidence.filter((record) => record.failure_reason), "failure_reason");
@@ -458,7 +459,9 @@ export function createChronofactOrchestrator({ store, clients }) {
         verification_status_counts: verificationStatusCounts,
         failure_reason_counts: failureReasonCounts,
         review_decision_counts: reviewDecisionCounts,
-        attention_count: attentionItems.length
+        attention_count: attentionItems.length,
+        audit_chain_valid: auditIntegrity.valid,
+        latest_audit_hash: auditIntegrity.latest_entry_hash
       },
       attention_items: attentionItems,
       latest_activity: auditLog.slice(-8).reverse(),
@@ -715,6 +718,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     createReview,
     listReviews: (filters) => ({ reviews: store.listReviewRecords(filters) }),
     listAuditLog: (filters) => ({ audit_log: store.listAuditLogs(filters) }),
+    verifyAuditLog: (filters) => ({ audit_integrity: store.verifyAuditChain(filters) }),
     seedDemoScenario,
     explainFact,
     explainTrace,
