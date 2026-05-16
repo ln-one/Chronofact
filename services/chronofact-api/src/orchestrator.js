@@ -337,6 +337,31 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  function listEvidence(filters = {}) {
+    return {
+      evidence: store.listPreservationRecords(filters).map((record) => ({
+        ...record,
+        asset: store.getAsset(record.asset_id),
+        asset_version: store.getVersion(record.version_id)
+      }))
+    };
+  }
+
+  function describeEvidence({ version_id, preservation_id } = {}) {
+    if (!version_id && !preservation_id) {
+      throw new ChronofactError("invalid_request", "version_id or preservation_id is required.", 400);
+    }
+
+    const evidence = store.describeEvidence({
+      versionId: version_id,
+      preservationId: preservation_id
+    });
+
+    return {
+      evidence
+    };
+  }
+
   async function explainSafely({ verificationResult, assetVersion, versionHistory = [], scenario }) {
     try {
       return {
@@ -371,6 +396,8 @@ export function createChronofactOrchestrator({ store, clients }) {
     verify,
     listAssets: (filters) => store.listAssets(filters),
     exportWorkspaceReport,
+    listEvidence,
+    describeEvidence,
     explainFact,
     explainTrace,
     explainRisk,

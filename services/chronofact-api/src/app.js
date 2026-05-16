@@ -46,7 +46,9 @@ function createHandler(orchestrator) {
           workspaces: orchestrator.listWorkspaces({
             status: url.searchParams.get("status") ?? undefined,
             workspaceType: url.searchParams.get("workspace_type") ?? undefined,
-            query: url.searchParams.get("q") ?? undefined
+            query: url.searchParams.get("q") ?? undefined,
+            createdFrom: url.searchParams.get("created_from") ?? undefined,
+            createdTo: url.searchParams.get("created_to") ?? undefined
           })
         });
       }
@@ -93,9 +95,32 @@ function createHandler(orchestrator) {
             workspaceId: url.searchParams.get("workspace_id") ?? undefined,
             status: url.searchParams.get("status") ?? undefined,
             assetType: url.searchParams.get("asset_type") ?? undefined,
-            query: url.searchParams.get("q") ?? undefined
+            query: url.searchParams.get("q") ?? undefined,
+            verificationStatus: url.searchParams.get("verification_status") ?? undefined,
+            failureReason: url.searchParams.get("failure_reason") ?? undefined,
+            createdFrom: url.searchParams.get("created_from") ?? undefined,
+            createdTo: url.searchParams.get("created_to") ?? undefined
           })
         });
+      }
+
+      if (request.method === "GET" && url.pathname === "/evidence") {
+        return sendJson(response, 200, orchestrator.listEvidence({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          verificationStatus: url.searchParams.get("verification_status") ?? undefined,
+          failureReason: url.searchParams.get("failure_reason") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      const versionEvidenceMatch = url.pathname.match(/^\/versions\/([^/]+)\/evidence$/);
+      if (request.method === "GET" && versionEvidenceMatch) {
+        return sendJson(response, 200, orchestrator.describeEvidence({
+          version_id: versionEvidenceMatch[1]
+        }));
       }
 
       if (request.method === "POST" && url.pathname === "/ai/explain/fact") {

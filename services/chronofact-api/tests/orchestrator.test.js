@@ -159,6 +159,35 @@ test("AI explanation endpoints explain facts, traces, and risk from structured e
   assert.equal(risk.risk_summary.requires_manual_review, true);
 });
 
+test("evidence search returns preservation records with asset and version context", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const workspace = await orchestrator.createWorkspace({
+    title: "Evidence Search"
+  });
+  const created = await orchestrator.submit({
+    workspace_id: workspace.workspace.workspace_id,
+    filename: "report.pdf",
+    content: { content_text: "report" }
+  });
+
+  const listed = orchestrator.listEvidence({
+    workspaceId: workspace.workspace.workspace_id,
+    verificationStatus: "verified",
+    createdFrom: "2026-05-13T00:00:00.000Z",
+    createdTo: "2026-05-13T00:00:00.000Z"
+  });
+  assert.equal(listed.evidence.length, 1);
+  assert.equal(listed.evidence[0].asset_version.version_id, created.asset_version.version_id);
+
+  const detail = orchestrator.describeEvidence({
+    version_id: created.asset_version.version_id
+  });
+  assert.equal(detail.evidence.preservation_record.digest, created.asset_version.sha256);
+  assert.equal(detail.evidence.witness_record.fact_id, created.witness_record.fact_id);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

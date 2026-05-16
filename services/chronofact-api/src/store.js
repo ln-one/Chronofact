@@ -18,6 +18,13 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
     return `${prefix}_${String(counter).padStart(3, "0")}`;
   }
 
+  function isWithinDateRange(value, from, to) {
+    if (!value) return false;
+    if (from && value < from) return false;
+    if (to && value > to) return false;
+    return true;
+  }
+
   return {
     createWorkspace({
       title,
@@ -49,11 +56,12 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return workspace;
     },
 
-    listWorkspaces({ status, workspaceType, query } = {}) {
+    listWorkspaces({ status, workspaceType, query, createdFrom, createdTo } = {}) {
       const normalizedQuery = query ? String(query).toLowerCase() : null;
       return Array.from(workspaces.values()).filter((workspace) => {
         if (status && workspace.status !== status) return false;
         if (workspaceType && workspace.workspace_type !== workspaceType) return false;
+        if ((createdFrom || createdTo) && !isWithinDateRange(workspace.created_at, createdFrom, createdTo)) return false;
         if (
           normalizedQuery &&
           !`${workspace.title} ${workspace.description}`.toLowerCase().includes(normalizedQuery)
@@ -135,16 +143,30 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return asset.version_ids.map((id) => versions.get(id));
     },
 
-    listAssets({ workspaceId, status, assetType, query } = {}) {
+    listAssets({
+      workspaceId,
+      status,
+      assetType,
+      query,
+      verificationStatus,
+      failureReason,
+      createdFrom,
+      createdTo
+    } = {}) {
       if (workspaceId) {
         this.requireWorkspace(workspaceId);
       }
       const normalizedQuery = query ? String(query).toLowerCase() : null;
       return Array.from(assets.values())
         .filter((asset) => {
+          const latestVersion = asset.version_ids.length ? versions.get(asset.version_ids.at(-1)) : null;
+          const preservationRecord = latestVersion?.preservation_record ?? null;
           if (workspaceId && asset.workspace_id !== workspaceId) return false;
           if (status && asset.status !== status) return false;
           if (assetType && asset.asset_type !== assetType) return false;
+          if ((createdFrom || createdTo) && !isWithinDateRange(asset.created_at, createdFrom, createdTo)) return false;
+          if (verificationStatus && preservationRecord?.verification_status !== verificationStatus) return false;
+          if (failureReason && preservationRecord?.failure_reason !== failureReason) return false;
           if (normalizedQuery && !`${asset.title ?? ""} ${asset.asset_type}`.toLowerCase().includes(normalizedQuery)) {
             return false;
           }
@@ -241,6 +263,22 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return version;
     },
 
+    getPreservationRecord(preservationId) {
+      return preservationRecords.get(preservationId) ?? null;
+    },
+
+    requirePreservationRecord(preservationId) {
+      const record = preservationRecords.get(preservationId);
+      if (!record) {
+        throw new ChronofactError(
+          "preservation_record_not_found",
+          `Preservation record ${preservationId} was not found.`,
+          404
+        );
+      }
+      return record;
+    },
+
     createPreservationRecord({ assetVersion, witnessRecord, verificationResult }) {
       const preservationId = nextId("prv", preservationCounter++);
       const record = {
@@ -271,6 +309,37 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         summary: `Preservation record ${preservationId} was created for version ${assetVersion.version_no}.`
       });
       return record;
+    },
+
+    listPreservationRecords({
+      workspaceId,
+      assetId,
+      versionId,
+      verificationStatus,
+      failureReason,
+      createdFrom,
+      createdTo
+    } = {}) {
+      if (workspaceId) {
+        this.requireWorkspace(workspaceId);
+      }
+      if (assetId) {
+        this.requireAsset(assetId);
+      }
+      if (versionId) {
+        this.requireVersion(versionId);
+      }
+
+      return Array.from(preservationRecords.values()).filter((record) => {
+        const asset = assets.get(record.asset_id);
+        if (workspaceId && asset?.workspace_id !== workspaceId) return false;
+        if (assetId && record.asset_id !== assetId) return false;
+        if (versionId && record.version_id !== versionId) return false;
+        if (verificationStatus && record.verification_status !== verificationStatus) return false;
+        if (failureReason && record.failure_reason !== failureReason) return false;
+        if ((createdFrom || createdTo) && !isWithinDateRange(record.created_at, createdFrom, createdTo)) return false;
+        return true;
+      });
     },
 
     appendAudit({
@@ -314,6 +383,29 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         ...asset,
         versions: this.listVersions(assetId),
         audit_log: this.listAuditLogs({ assetId })
+      };
+    },
+
+    describeEvidence({ versionId, preservationId } = {}) {
+      const record = preservationId
+        ? this.requirePreservationRecord(preservationId)
+        : this.listPreservationRecords({ versionId })[0];
+      if (!record) {
+        throw new ChronofactError(
+          "preservation_record_not_found",
+          "No preservation record exists for the requested version.",
+          404
+        );
+      }
+
+      const asset = this.requireAsset(record.asset_id);
+      const version = this.requireVersion(record.version_id);
+      return {
+        asset,
+        asset_version: version,
+        preservation_record: record,
+        witness_record: version.witness_record ?? null,
+        audit_log: this.listAuditLogs({ assetId: asset.asset_id, versionId: version.version_id })
       };
     },
 

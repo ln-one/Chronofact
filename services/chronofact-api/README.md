@@ -135,7 +135,8 @@ curl -s http://localhost:3001/workspaces \
 
 ### `GET /workspaces`
 
-Lists workspaces. Optional filters: `status`, `workspace_type`, and `q`.
+Lists workspaces. Optional filters: `status`, `workspace_type`, `q`,
+`created_from`, and `created_to`.
 
 ### `GET /workspaces/:workspace_id`
 
@@ -155,10 +156,30 @@ curl -s http://localhost:3001/workspaces/ws_001/assets \
 
 Returns a lightweight Markdown report payload for demo export and答辩.
 
+### `GET /evidence`
+
+Lists preservation records with asset and version context. Optional filters:
+`workspace_id`, `asset_id`, `version_id`, `verification_status`,
+`failure_reason`, `created_from`, and `created_to`.
+
+```bash
+curl -s "http://localhost:3001/evidence?workspace_id=ws_001&verification_status=verified"
+```
+
+### `GET /versions/:version_id/evidence`
+
+Returns the evidence bundle for one version, including the asset, asset version,
+preservation record, witness record, and audit log.
+
+```bash
+curl -s http://localhost:3001/versions/ver_001/evidence
+```
+
 ### `GET /assets`
 
-Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, and
-`q`. Each asset includes its latest version.
+Lists assets. Optional filters: `workspace_id`, `status`, `asset_type`, `q`,
+`verification_status`, `failure_reason`, `created_from`, and `created_to`.
+Each asset includes its latest version.
 
 ### `POST /assets`
 
@@ -253,6 +274,8 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 
 - Workspace flow: `POST /workspaces`, then `POST /workspaces/:id/assets`, then
   `GET /workspaces/:id/report`.
+- Retrieval flow: `GET /assets?verification_status=verified`, `GET /evidence`,
+  then `GET /versions/:id/evidence`.
 - Normal submission: `POST /assets`, then `POST /verify` with the same content.
 - Tampered file: `POST /verify` with different content.
 - Missing proof: `POST /verify` with `scenario=proof_missing`.

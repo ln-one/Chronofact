@@ -123,6 +123,53 @@ test("HTTP API exposes explicit AI explanation endpoints", async (t) => {
   assert.equal(risk.body.risk_summary.failure_reason, "chain_unavailable");
 });
 
+test("HTTP API filters assets and evidence by status and date range", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const workspace = await postJson(`${baseUrl}/workspaces`, {
+    title: "Searchable Evidence Workspace"
+  });
+  const verified = await postJson(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/assets`, {
+    asset_title: "Verified report",
+    filename: "verified.md",
+    content_text: "verified"
+  });
+  const pending = await postJson(`${baseUrl}/workspaces/${workspace.body.workspace.workspace_id}/assets`, {
+    asset_title: "Pending receipt",
+    filename: "pending.md",
+    content_text: "pending",
+    scenario: "proof_missing"
+  });
+
+  const pendingAssets = await fetch(
+    `${baseUrl}/assets?workspace_id=${workspace.body.workspace.workspace_id}&verification_status=pending`
+  );
+  const pendingAssetsBody = await pendingAssets.json();
+  assert.equal(pendingAssets.status, 200);
+  assert.equal(pendingAssetsBody.assets.length, 1);
+  assert.equal(pendingAssetsBody.assets[0].asset_id, pending.body.asset_version.asset_id);
+
+  const futureAssets = await fetch(`${baseUrl}/assets?created_from=2999-01-01T00:00:00.000Z`);
+  const futureAssetsBody = await futureAssets.json();
+  assert.equal(futureAssets.status, 200);
+  assert.equal(futureAssetsBody.assets.length, 0);
+
+  const evidence = await fetch(
+    `${baseUrl}/evidence?workspace_id=${workspace.body.workspace.workspace_id}&verification_status=verified`
+  );
+  const evidenceBody = await evidence.json();
+  assert.equal(evidence.status, 200);
+  assert.equal(evidenceBody.evidence.length, 1);
+  assert.equal(evidenceBody.evidence[0].asset_id, verified.body.asset_version.asset_id);
+  assert.equal(evidenceBody.evidence[0].asset_version.version_id, verified.body.asset_version.version_id);
+
+  const detail = await fetch(`${baseUrl}/versions/${verified.body.asset_version.version_id}/evidence`);
+  const detailBody = await detail.json();
+  assert.equal(detail.status, 200);
+  assert.equal(detailBody.evidence.preservation_record.verification_status, "verified");
+  assert.equal(detailBody.evidence.witness_record.fact_id, verified.body.witness_record.fact_id);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",
