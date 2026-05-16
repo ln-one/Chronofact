@@ -123,6 +123,24 @@ Returns service health.
 
 Returns the unified first-phase mock object used by all tracks.
 
+### `POST /demo/seed`
+
+Creates a complete local demo workflow in memory and returns useful API links.
+The seeded scenario includes:
+
+- one workspace in `under_review`
+- one lab report asset with two linked versions
+- one screenshot asset with `proof_missing`
+- one approved manual review
+- one `needs_revision` manual review
+- evidence, report, audit, and AI explanation links for the demo
+
+```bash
+curl -s http://localhost:3001/demo/seed \
+  -H "content-type: application/json" \
+  -d '{}'
+```
+
 ### `POST /workspaces`
 
 Creates a course-facing experiment or delivery workspace.
@@ -319,6 +337,9 @@ The result is `failed` with `failure_reason = digest_mismatch`.
 
 ## Demo Checklist
 
+- Seeded end-to-end demo: `POST /demo/seed`, then open the returned
+  `demo_links.workspace`, `demo_links.primary_report`, and
+  `demo_links.pending_report` paths.
 - Workspace flow: `POST /workspaces`, then `POST /workspaces/:id/assets`, then
   `GET /workspaces/:id/report`.
 - Retrieval flow: `GET /assets?verification_status=verified`, `GET /evidence`,

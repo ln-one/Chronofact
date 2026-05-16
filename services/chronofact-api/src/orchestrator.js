@@ -486,6 +486,109 @@ export function createChronofactOrchestrator({ store, clients }) {
     };
   }
 
+  async function seedDemoScenario({ scenario = "course_delivery" } = {}) {
+    if (scenario !== "course_delivery") {
+      throw new ChronofactError(
+        "unsupported_demo_scenario",
+        "Only course_delivery demo scenario is supported.",
+        400
+      );
+    }
+
+    const workspaceResult = await createWorkspace({
+      title: "Experiment Delivery Demo",
+      workspace_type: "course_project",
+      description: "Seeded demo workspace for upload, evidence, verification, AI explanation, and manual review."
+    });
+    const workspaceId = workspaceResult.workspace.workspace_id;
+
+    const reportV1 = await submit({
+      workspace_id: workspaceId,
+      asset_title: "Lab report",
+      filename: "lab-report-v1.md",
+      asset_type: "lab_report",
+      content: {
+        content_text: "# Lab Report\n\nInitial experiment report with setup notes."
+      }
+    });
+    const reportV2 = await createVersion({
+      workspace_id: workspaceId,
+      asset_id: reportV1.asset_version.asset_id,
+      filename: "lab-report-v2.md",
+      asset_type: "lab_report",
+      content: {
+        content_text: "# Lab Report\n\nRevised report with final conclusion and result table."
+      }
+    });
+    const pendingProof = await submit({
+      workspace_id: workspaceId,
+      asset_title: "Result screenshot",
+      filename: "result-screenshot.txt",
+      asset_type: "result_screenshot",
+      content: {
+        content_text: "placeholder screenshot metadata for demo"
+      },
+      scenario: "proof_missing"
+    });
+
+    await createReview({
+      version_id: reportV2.asset_version.version_id,
+      decision: "approved",
+      summary: "Report evidence is complete for the course demo.",
+      notes: "The reviewer accepted the revised report after comparing digest, receipt, and trace.",
+      next_checks: ["Archive the report package", "Show the verification report during答辩"]
+    });
+    await createReview({
+      version_id: pendingProof.asset_version.version_id,
+      decision: "needs_revision",
+      summary: "Screenshot proof is still pending.",
+      notes: "The reviewer should retry verification after proof becomes available.",
+      next_checks: ["Retry proof verification", "Upload a final screenshot if proof stays missing"]
+    });
+    const workspaceStatus = await updateWorkspaceStatus({
+      workspace_id: workspaceId,
+      status: "under_review"
+    });
+
+    const reportVersionId = reportV2.asset_version.version_id;
+    const pendingVersionId = pendingProof.asset_version.version_id;
+
+    return {
+      scenario,
+      workspace: workspaceStatus.workspace,
+      primary_asset: {
+        asset_id: reportV2.asset_version.asset_id,
+        latest_version_id: reportVersionId,
+        version_count: 2
+      },
+      pending_asset: {
+        asset_id: pendingProof.asset_version.asset_id,
+        latest_version_id: pendingVersionId,
+        failure_reason: pendingProof.verification_result.failure_reason
+      },
+      demo_links: {
+        workspace: `/workspaces/${workspaceId}`,
+        workspace_report: `/workspaces/${workspaceId}/report`,
+        assets: `/assets?workspace_id=${workspaceId}`,
+        evidence: `/evidence?workspace_id=${workspaceId}`,
+        audit_log: `/audit-log?workspace_id=${workspaceId}`,
+        primary_evidence: `/versions/${reportVersionId}/evidence`,
+        primary_report: `/versions/${reportVersionId}/report`,
+        primary_risk: `/ai/explain/risk`,
+        pending_evidence: `/versions/${pendingVersionId}/evidence`,
+        pending_report: `/versions/${pendingVersionId}/report?scenario=proof_missing`
+      },
+      created: {
+        versions: [
+          reportV1.asset_version,
+          reportV2.asset_version,
+          pendingProof.asset_version
+        ],
+        reviews: store.listReviewRecords({ workspaceId })
+      }
+    };
+  }
+
   function latestReviewLine(reviewRecords = []) {
     const latestReview = reviewRecords.at(-1);
     if (!latestReview) {
@@ -541,6 +644,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     createReview,
     listReviews: (filters) => ({ reviews: store.listReviewRecords(filters) }),
     listAuditLog: (filters) => ({ audit_log: store.listAuditLogs(filters) }),
+    seedDemoScenario,
     explainFact,
     explainTrace,
     explainRisk,

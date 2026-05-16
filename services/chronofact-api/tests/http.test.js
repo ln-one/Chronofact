@@ -245,6 +245,39 @@ test("HTTP API records manual reviews and workspace status changes", async (t) =
   assert.match(reportBody.report.content, /Decision: approved/);
 });
 
+test("HTTP API seeds a complete local demo workflow", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const seeded = await postJson(`${baseUrl}/demo/seed`, {});
+  assert.equal(seeded.status, 201);
+  assert.equal(seeded.body.scenario, "course_delivery");
+  assert.equal(seeded.body.workspace.status, "under_review");
+  assert.equal(seeded.body.primary_asset.version_count, 2);
+  assert.equal(seeded.body.pending_asset.failure_reason, "proof_missing");
+  assert.equal(seeded.body.created.reviews.length, 2);
+
+  const workspace = await fetch(`${baseUrl}${seeded.body.demo_links.workspace}`);
+  const workspaceBody = await workspace.json();
+  assert.equal(workspace.status, 200);
+  assert.equal(workspaceBody.assets.length, 2);
+
+  const evidence = await fetch(`${baseUrl}${seeded.body.demo_links.evidence}`);
+  const evidenceBody = await evidence.json();
+  assert.equal(evidence.status, 200);
+  assert.equal(evidenceBody.evidence.length, 3);
+
+  const report = await fetch(`${baseUrl}${seeded.body.demo_links.primary_report}`);
+  const reportBody = await report.json();
+  assert.equal(report.status, 200);
+  assert.match(reportBody.report.content, /Decision: approved/);
+
+  const pendingReport = await fetch(`${baseUrl}${seeded.body.demo_links.pending_report}`);
+  const pendingReportBody = await pendingReport.json();
+  assert.equal(pendingReport.status, 200);
+  assert.equal(pendingReportBody.verification_result.failure_reason, "proof_missing");
+  assert.match(pendingReportBody.report.content, /Decision: needs_revision/);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

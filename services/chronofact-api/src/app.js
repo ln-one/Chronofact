@@ -41,6 +41,14 @@ function createHandler(orchestrator) {
         return sendJson(response, 200, MOCK_CONTRACT);
       }
 
+      if (request.method === "POST" && url.pathname === "/demo/seed") {
+        const body = await readJson(request);
+        const result = await orchestrator.seedDemoScenario({
+          scenario: body.scenario ?? scenario ?? "course_delivery"
+        });
+        return sendJson(response, 201, result);
+      }
+
       if (request.method === "GET" && url.pathname === "/workspaces") {
         return sendJson(response, 200, {
           workspaces: orchestrator.listWorkspaces({

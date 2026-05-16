@@ -272,6 +272,35 @@ test("workspace status updates are audited", async (t) => {
   assert.equal(audit.audit_log.length, 1);
 });
 
+test("demo seed creates a complete course delivery workflow", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const seeded = await orchestrator.seedDemoScenario();
+
+  assert.equal(seeded.scenario, "course_delivery");
+  assert.equal(seeded.workspace.status, "under_review");
+  assert.equal(seeded.primary_asset.version_count, 2);
+  assert.equal(seeded.pending_asset.failure_reason, "proof_missing");
+  assert.equal(seeded.created.versions.length, 3);
+  assert.equal(seeded.created.reviews.length, 2);
+  assert.match(seeded.demo_links.workspace_report, new RegExp(seeded.workspace.workspace_id));
+
+  const workspace = orchestrator.describeWorkspace(seeded.workspace.workspace_id);
+  assert.equal(workspace.assets.length, 2);
+
+  const evidence = orchestrator.listEvidence({
+    workspaceId: seeded.workspace.workspace_id
+  });
+  assert.equal(evidence.evidence.length, 3);
+
+  const audit = orchestrator.listAuditLog({
+    workspaceId: seeded.workspace.workspace_id
+  });
+  assert.ok(audit.audit_log.some((entry) => entry.action === "workspace_status_updated"));
+  assert.ok(audit.audit_log.some((entry) => entry.action === "review_record_created"));
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));
