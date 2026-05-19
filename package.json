@@ -9,7 +9,7 @@
     "contracts:deploy:ganache": "node scripts/deploy_contract.js",
     "contracts:sample": "node scripts/register_sample_version.js",
     "test:api": "npm --prefix services/chronofact-api test",
-    "test:ai": "cd services/ai-explanation && python -m unittest discover -s tests",
+    "test:ai": "cd services/ai-explanation && python3 -m unittest discover -s tests",
     "test:frontend": "npm --prefix services/frontend-demo run build",
     "test:integration": "node scripts/integration_smoke.mjs",
     "check:phase-one": "npm run test:api && npm run test:ai && npm run contracts:compile && npm run test:frontend && npm run test:integration"

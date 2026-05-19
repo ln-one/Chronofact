@@ -1,0 +1,108 @@
+export const proofAccessScenarios = {
+  missingProof: {
+    label: "待回执提交",
+    identity_context: {
+      user_id: "user_001",
+      display_name: "Student A",
+      organization_id: "course_001",
+      role: "student",
+    },
+    upload_record: {
+      upload_id: "upl_003",
+      storage_ref: "dualweave://upl_003",
+      filename: "report-without-proof.pdf",
+      sha256: "b782c19a0d4f6e8a22c4d6e8f0112233445566778899aabbccddeeff00112233",
+      status: "stored",
+    },
+    asset_version: {
+      asset_id: "asset_003",
+      asset_type: "assignment",
+      version_no: 1,
+      previous_version_id: null,
+      sha256: "b782c19a0d4f6e8a22c4d6e8f0112233445566778899aabbccddeeff00112233",
+      submitter_id: "user_001",
+      timestamp: "待确认",
+    },
+    verification_result: {
+      status: "pending",
+      receipt_status: "missing",
+      trace_status: "missing",
+      digest_match: null,
+      failure_reason: "proof_missing",
+    },
+    proof: {
+      receipt_id: "未返回",
+      trace_id: "未返回",
+      transaction_hash: "未返回",
+      timestamp: "待确认",
+    },
+    ai_explanation: {
+      summary: "文件 digest 已生成，但 receipt 或 trace 尚未返回，暂时不能完成证明核验。",
+      risks: ["系统暂时无法给出完整验证结论。"],
+      next_checks: ["等待 receipt 返回。", "稍后重新刷新验证状态。"],
+      confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+    },
+    timeline: [
+      {
+        version: "v1",
+        digest: "b782...2233",
+        status: "pending",
+        time: "待确认",
+        previous_version_id: "无",
+      },
+    ],
+  },
+  chainUnavailable: {
+    label: "链路待恢复",
+    identity_context: {
+      user_id: "user_001",
+      display_name: "Student A",
+      organization_id: "course_001",
+      role: "student",
+    },
+    upload_record: {
+      upload_id: "upl_004",
+      storage_ref: "dualweave://upl_004",
+      filename: "lab-chain-check.pdf",
+      sha256: "d0123456789abcdef00112233445566778899aabbccddeeff001122334455667",
+      status: "stored",
+    },
+    asset_version: {
+      asset_id: "asset_004",
+      asset_type: "lab_report",
+      version_no: 1,
+      previous_version_id: null,
+      sha256: "d0123456789abcdef00112233445566778899aabbccddeeff001122334455667",
+      submitter_id: "user_001",
+      timestamp: "2026-05-08 11:12",
+    },
+    verification_result: {
+      status: "unsupported",
+      receipt_status: "unavailable",
+      trace_status: "unavailable",
+      digest_match: null,
+      failure_reason: "chain_unavailable",
+    },
+    proof: {
+      receipt_id: "unavailable",
+      trace_id: "unavailable",
+      transaction_hash: "unavailable",
+      timestamp: "unavailable",
+    },
+    ai_explanation: {
+      summary: "无法连接到底层证据链网络获取回执。",
+      risks: ["底层证据网络不可达。"],
+      next_checks: ["检查 Chronestia 服务或区块链节点状态。"],
+      confidence_note: "AI 解释不构成真实性证明，证明来源为结构化回执与验证结果。",
+    },
+    timeline: [
+      {
+        version: "v1",
+        digest: "d012...5667",
+        status: "unsupported",
+        time: "2026-05-08 11:12",
+        previous_version_id: "无",
+      },
+    ],
+  },
+};

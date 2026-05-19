@@ -44,13 +44,24 @@ test("AI HTTP client sends structured evidence and returns explanation fields", 
         tx_hash: "0xabc",
         recorded_at: "2026-05-13T00:00:00.000Z"
       }
-    }
+    },
+    versionHistory: [
+      {
+        version_id: "ver_001",
+        version_no: 1,
+        previous_version_id: null,
+        sha256: "abc123",
+        fact_id: "fact_001",
+        receipt_id: "rcpt_001"
+      }
+    ]
   });
 
   assert.equal(captured.url, "http://ai.example.test/api/ai/explain");
   assert.equal(captured.payload.asset_version.asset_id, "asset_001");
   assert.equal(captured.payload.verification_result.status, "verified");
   assert.equal(captured.payload.receipt.receipt_id, "rcpt_001");
+  assert.equal(captured.payload.version_history[0].version_id, "ver_001");
   assert.deepEqual(result.evidence_basis, ["sha256", "verification_result"]);
 });
 

@@ -41,9 +41,212 @@ function createHandler(orchestrator) {
         return sendJson(response, 200, MOCK_CONTRACT);
       }
 
+      if (request.method === "POST" && url.pathname === "/demo/seed") {
+        const body = await readJson(request);
+        const result = await orchestrator.seedDemoScenario({
+          scenario: body.scenario ?? scenario ?? "course_delivery"
+        });
+        return sendJson(response, 201, result);
+      }
+
+      if (request.method === "GET" && url.pathname === "/workspaces") {
+        return sendJson(response, 200, {
+          workspaces: orchestrator.listWorkspaces({
+            status: url.searchParams.get("status") ?? undefined,
+            workspaceType: url.searchParams.get("workspace_type") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined,
+            createdFrom: url.searchParams.get("created_from") ?? undefined,
+            createdTo: url.searchParams.get("created_to") ?? undefined
+          })
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/workspaces") {
+        const body = await readJson(request);
+        const result = await orchestrator.createWorkspace({
+          title: body.title,
+          workspace_type: body.workspace_type,
+          description: body.description,
+          status: body.status,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      const workspaceStatusMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/status$/);
+      if (request.method === "POST" && workspaceStatusMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.updateWorkspaceStatus({
+          workspace_id: workspaceStatusMatch[1],
+          status: body.status,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
+      const workspaceAssetMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/assets$/);
+      if (request.method === "POST" && workspaceAssetMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.submit({
+          workspace_id: workspaceAssetMatch[1],
+          asset_title: body.asset_title ?? body.title,
+          filename: body.filename,
+          asset_type: body.asset_type,
+          content: body,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      const workspaceReportMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/report$/);
+      if (request.method === "GET" && workspaceReportMatch) {
+        return sendJson(response, 200, orchestrator.exportWorkspaceReport(workspaceReportMatch[1]));
+      }
+
+      const workspaceOverviewMatch = url.pathname.match(/^\/workspaces\/([^/]+)\/overview$/);
+      if (request.method === "GET" && workspaceOverviewMatch) {
+        return sendJson(response, 200, orchestrator.describeWorkspaceOverview(workspaceOverviewMatch[1]));
+      }
+
+      const workspaceMatch = url.pathname.match(/^\/workspaces\/([^/]+)$/);
+      if (request.method === "GET" && workspaceMatch) {
+        return sendJson(response, 200, orchestrator.describeWorkspace(workspaceMatch[1]));
+      }
+
+      if (request.method === "GET" && url.pathname === "/assets") {
+        return sendJson(response, 200, {
+          assets: orchestrator.listAssets({
+            workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+            status: url.searchParams.get("status") ?? undefined,
+            assetType: url.searchParams.get("asset_type") ?? undefined,
+            query: url.searchParams.get("q") ?? undefined,
+            verificationStatus: url.searchParams.get("verification_status") ?? undefined,
+            failureReason: url.searchParams.get("failure_reason") ?? undefined,
+            createdFrom: url.searchParams.get("created_from") ?? undefined,
+            createdTo: url.searchParams.get("created_to") ?? undefined
+          })
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/evidence") {
+        return sendJson(response, 200, orchestrator.listEvidence({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          verificationStatus: url.searchParams.get("verification_status") ?? undefined,
+          failureReason: url.searchParams.get("failure_reason") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/audit-log") {
+        return sendJson(response, 200, orchestrator.listAuditLog({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          action: url.searchParams.get("action") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/audit-log/verify") {
+        return sendJson(response, 200, orchestrator.verifyAuditLog({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          action: url.searchParams.get("action") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      const versionEvidenceMatch = url.pathname.match(/^\/versions\/([^/]+)\/evidence$/);
+      if (request.method === "GET" && versionEvidenceMatch) {
+        return sendJson(response, 200, orchestrator.describeEvidence({
+          version_id: versionEvidenceMatch[1]
+        }));
+      }
+
+      const versionReportMatch = url.pathname.match(/^\/versions\/([^/]+)\/report$/);
+      if (request.method === "GET" && versionReportMatch) {
+        return sendJson(response, 200, await orchestrator.exportVersionReport({
+          version_id: versionReportMatch[1],
+          scenario
+        }));
+      }
+
+      const versionReviewMatch = url.pathname.match(/^\/versions\/([^/]+)\/reviews$/);
+      if (request.method === "POST" && versionReviewMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.createReview({
+          version_id: versionReviewMatch[1],
+          decision: body.decision,
+          summary: body.summary,
+          notes: body.notes,
+          next_checks: body.next_checks,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      if (request.method === "GET" && versionReviewMatch) {
+        return sendJson(response, 200, orchestrator.listReviews({
+          versionId: versionReviewMatch[1],
+          decision: url.searchParams.get("decision") ?? undefined,
+          reviewerId: url.searchParams.get("reviewer_id") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/reviews") {
+        return sendJson(response, 200, orchestrator.listReviews({
+          workspaceId: url.searchParams.get("workspace_id") ?? undefined,
+          assetId: url.searchParams.get("asset_id") ?? undefined,
+          versionId: url.searchParams.get("version_id") ?? undefined,
+          decision: url.searchParams.get("decision") ?? undefined,
+          reviewerId: url.searchParams.get("reviewer_id") ?? undefined,
+          createdFrom: url.searchParams.get("created_from") ?? undefined,
+          createdTo: url.searchParams.get("created_to") ?? undefined
+        }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/explain/fact") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainFact({
+          asset_id: body.asset_id,
+          version_id: body.version_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/explain/trace") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainTrace({
+          asset_id: body.asset_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
+      if (request.method === "POST" && url.pathname === "/ai/explain/risk") {
+        const body = await readJson(request);
+        const result = await orchestrator.explainRisk({
+          asset_id: body.asset_id,
+          version_id: body.version_id,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
       if (request.method === "POST" && url.pathname === "/assets") {
         const body = await readJson(request);
         const result = await orchestrator.submit({
+          workspace_id: body.workspace_id,
+          asset_title: body.asset_title ?? body.title,
           filename: body.filename,
           asset_type: body.asset_type,
           content: body,
@@ -57,6 +260,7 @@ function createHandler(orchestrator) {
         const body = await readJson(request);
         const result = await orchestrator.createVersion({
           asset_id: versionMatch[1],
+          workspace_id: body.workspace_id,
           filename: body.filename,
           asset_type: body.asset_type,
           content: body,

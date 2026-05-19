@@ -1,10 +1,10 @@
 import { cn } from "../../lib/utils";
 
 const statusClasses = {
-  verified: "border-green-200 bg-green-100 text-green-800",
-  failed: "border-red-200 bg-red-100 text-red-800",
-  pending: "border-yellow-200 bg-yellow-100 text-yellow-800",
-  unsupported: "border-gray-200 bg-gray-100 text-gray-800",
+  verified: "border-teal-200 bg-teal-100 text-teal-800",
+  failed: "border-rose-200 bg-rose-100 text-rose-800",
+  pending: "border-amber-200 bg-amber-100 text-amber-800",
+  unsupported: "border-slate-200 bg-slate-100 text-slate-700",
 };
 
 export function Badge({ className, status, ...props }) {

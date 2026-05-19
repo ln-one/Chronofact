@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../services/chronofact-api/src/app.js";
 
@@ -6,12 +6,13 @@ const aiPort = Number(process.env.CHRONOFACT_AI_PORT ?? 18080);
 const apiPort = Number(process.env.CHRONOFACT_API_PORT ?? 13001);
 const aiUrl = `http://127.0.0.1:${aiPort}`;
 const apiUrl = `http://127.0.0.1:${apiPort}`;
+const pythonCommand = resolvePythonCommand();
 
 let aiProcess;
 let apiServer;
 
 try {
-  aiProcess = spawn("python", ["run_server.py"], {
+  aiProcess = spawn(pythonCommand, ["run_server.py"], {
     cwd: new URL("../services/ai-explanation/", import.meta.url),
     env: {
       ...process.env,
@@ -88,6 +89,24 @@ try {
   if (aiProcess) {
     aiProcess.kill();
   }
+}
+
+function resolvePythonCommand() {
+  const configured = process.env.PYTHON;
+  if (configured) {
+    return configured;
+  }
+
+  for (const candidate of ["python3", "python"]) {
+    const result = spawnSync(candidate, ["--version"], {
+      stdio: "ignore"
+    });
+    if (result.status === 0) {
+      return candidate;
+    }
+  }
+
+  return "python";
 }
 
 async function waitForHealth(url, label) {
