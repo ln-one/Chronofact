@@ -14,7 +14,7 @@ below to call real services.
 
 Implemented phase-one flow:
 
-1. resolve identity through the fixed demo Limora identity adapter
+1. resolve identity through Limora session forwarding, or through the local demo adapter when Limora is not configured
 2. create an experiment or delivery workspace when the demo needs grouping
 3. accept an asset submission payload
 4. compute a stable SHA-256 digest
@@ -24,6 +24,15 @@ Implemented phase-one flow:
 8. register the version through the Chronestia adapter
 9. create a preservation record and audit timeline entry
 10. verify the version and produce an AI explanation response
+
+The real organization-scoped evidence path is hash-first:
+
+1. receive `sha256`, `content_text`, or `content_base64`
+2. compute or normalize the SHA-256 digest
+3. require a Limora session and `chronofact.evidence.*` permission
+4. store digest metadata in Chronofact
+5. anchor the digest through Chronestia
+6. verify later by recomputing or receiving the digest and searching it
 
 The demo Dualweave adapter keeps original files under `.cache/chronofact/uploads`
 at runtime. Those files are local demo artifacts and are not committed.
@@ -52,7 +61,7 @@ PORT=3010 npm start
 
 Default behavior uses local demo adapters. The adapter contracts are:
 
-- Limora: `resolveIdentity`
+- Limora: `resolveIdentity`, `requirePermission`
 - Dualweave: `storeUpload`
 - Chronestia: `registerVersion`, `verifyVersion`
 - AI: `explain`
@@ -64,10 +73,12 @@ Environment variables:
 | `CHRONOFACT_AI_URL` | Calls the real AI explanation HTTP service at `POST /api/ai/explain`. |
 | `CHRONOFACT_CHRONESTIA_URL` | Calls the real Chronestia HTTP or Docker-exposed API at `POST /facts` and `POST /facts/{fact_id}/verify`. |
 | `CHRONOFACT_DUALWEAVE_URL` | Calls the real Dualweave upload service at `POST /uploads`. |
+| `CHRONOFACT_LIMORA_URL` | Calls real Limora session and permission APIs. Chronofact forwards `cookie` and `authorization` headers. |
 | `CHRONOFACT_DUALWEAVE_EXECUTION_JSON` | Inline Dualweave execution spec sent with each upload. Required when `CHRONOFACT_DUALWEAVE_URL` is set unless a file is configured. |
 | `CHRONOFACT_DUALWEAVE_EXECUTION_FILE` | Path to a Dualweave execution spec JSON file. |
 | `CHRONOFACT_HTTP_TIMEOUT_MS` | Shared adapter timeout override. |
 | `CHRONOFACT_AI_TIMEOUT_MS` | AI adapter timeout override. |
+| `CHRONOFACT_LIMORA_TIMEOUT_MS` | Limora adapter timeout override. |
 | `CHRONOFACT_CHRONESTIA_TIMEOUT_MS` | Chronestia adapter timeout override. |
 | `CHRONOFACT_DUALWEAVE_TIMEOUT_MS` | Dualweave adapter timeout override. |
 
@@ -110,8 +121,10 @@ $env:CHRONOFACT_DUALWEAVE_EXECUTION_FILE="configs\dualweave.execution.json"
 npm start
 ```
 
-Limora is intentionally still a fixed demo identity adapter in this phase. Swap
-it after the upload and witness adapters are stable.
+When `CHRONOFACT_LIMORA_URL` is set, organization evidence endpoints require a
+Limora session and explicit permissions such as `chronofact.evidence.create`,
+`chronofact.evidence.read`, and `chronofact.evidence.verify`. Login and
+registration stay owned by Limora; Chronofact only consumes the session.
 
 ## Endpoints
 
@@ -193,6 +206,41 @@ Lists preservation records with asset and version context. Optional filters:
 ```bash
 curl -s "http://localhost:3001/evidence?workspace_id=ws_001&verification_status=verified"
 ```
+
+### `POST /organizations/:organization_id/evidence/preserve`
+
+Preserves one file digest in an organization scope. Requires a Limora session
+and `chronofact.evidence.create` when `CHRONOFACT_LIMORA_URL` is configured.
+
+```bash
+curl -s http://localhost:3001/organizations/org_001/evidence/preserve \
+  -H "content-type: application/json" \
+  -H "cookie: better-auth.session_token=..." \
+  -d '{"filename":"report.pdf","content_text":"file bytes or text"}'
+```
+
+### `POST /organizations/:organization_id/evidence/verify`
+
+Verifies by hash. Without `proof_id` or `version_id`, Chronofact searches the
+organization for the digest and returns `preserved` or `not_preserved`. With a
+target proof or version, a different digest returns `mismatch`.
+
+```bash
+curl -s http://localhost:3001/organizations/org_001/evidence/verify \
+  -H "content-type: application/json" \
+  -H "cookie: better-auth.session_token=..." \
+  -d '{"content_text":"file bytes or text"}'
+```
+
+### `GET /organizations/:organization_id/evidence`
+
+Lists organization-scoped preservation records. Requires
+`chronofact.evidence.read`.
+
+### `GET /organizations/:organization_id/evidence/digests/:sha256`
+
+Searches organization-scoped preservation records by digest. Requires
+`chronofact.evidence.read`.
 
 ### `GET /versions/:version_id/evidence`
 

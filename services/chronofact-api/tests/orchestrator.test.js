@@ -413,6 +413,117 @@ test("verification detects digest mismatch without treating it as proof success"
   assert.match(result.ai_explanation.summary, /does not match/);
 });
 
+test("organization evidence preserve and digest verification follow the hash main path", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const preserved = await orchestrator.preserveEvidence({
+    organization_id: "org-1",
+    filename: "report.pdf",
+    content: { content_text: "original" }
+  });
+
+  assert.equal(preserved.status, "preserved");
+  assert.equal(preserved.sha256, sha256Hex(Buffer.from("original")));
+  assert.equal(preserved.asset.organization_id, "org-1");
+  assert.equal(preserved.proof_id, "prv_001");
+
+  const found = await orchestrator.verifyEvidence({
+    organization_id: "org-1",
+    content: { content_text: "original" }
+  });
+  assert.equal(found.result, "preserved");
+  assert.equal(found.matched, true);
+  assert.equal(found.matches.length, 1);
+  assert.equal(found.matches[0].proof_id, preserved.proof_id);
+
+  const missing = await orchestrator.verifyEvidence({
+    organization_id: "org-1",
+    content: { content_text: "changed" }
+  });
+  assert.equal(missing.result, "not_preserved");
+  assert.equal(missing.matched, false);
+
+  const mismatch = await orchestrator.verifyEvidence({
+    organization_id: "org-1",
+    proof_id: preserved.proof_id,
+    content: { content_text: "changed" }
+  });
+  assert.equal(mismatch.result, "mismatch");
+  assert.equal(mismatch.proof.failure_reason, "digest_mismatch");
+});
+
+test("organization evidence preserve accepts explicit sha256 without file content", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+  const digest = sha256Hex(Buffer.from("precomputed"));
+
+  const preserved = await orchestrator.preserveEvidence({
+    organization_id: "org-1",
+    filename: "report.pdf",
+    sha256: digest
+  });
+
+  assert.equal(preserved.sha256, digest);
+  assert.equal(preserved.version.size, null);
+});
+
+test("organization evidence validation rejects missing and malformed digest input", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  await assert.rejects(
+    () =>
+      orchestrator.preserveEvidence({
+        organization_id: "org-1",
+        filename: "report.pdf"
+      }),
+    {
+      code: "invalid_request",
+      statusCode: 400
+    }
+  );
+
+  await assert.rejects(
+    () =>
+      orchestrator.verifyEvidence({
+        organization_id: "org-1",
+        sha256: "not-a-digest"
+      }),
+    {
+      code: "invalid_sha256",
+      statusCode: 400
+    }
+  );
+});
+
+test("organization evidence verification maps proof states to user-facing results", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const preserved = await orchestrator.preserveEvidence({
+    organization_id: "org-1",
+    filename: "report.pdf",
+    content: { content_text: "original" }
+  });
+
+  const pending = await orchestrator.verifyEvidence({
+    organization_id: "org-1",
+    proof_id: preserved.proof_id,
+    content: { content_text: "original" },
+    scenario: "proof_missing"
+  });
+  assert.equal(pending.result, "pending");
+
+  const unavailable = await orchestrator.verifyEvidence({
+    organization_id: "org-1",
+    proof_id: preserved.proof_id,
+    content: { content_text: "original" },
+    scenario: "chain_unavailable"
+  });
+  assert.equal(unavailable.result, "proof_unavailable");
+});
+
 test("verification distinguishes missing proof from chain access failure", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));

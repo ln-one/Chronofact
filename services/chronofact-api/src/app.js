@@ -140,6 +140,56 @@ function createHandler(orchestrator) {
         }));
       }
 
+      const organizationEvidenceMatch = url.pathname.match(/^\/organizations\/([^/]+)\/evidence$/);
+      if (request.method === "GET" && organizationEvidenceMatch) {
+        return sendJson(response, 200, await orchestrator.listOrganizationEvidence({
+          organization_id: organizationEvidenceMatch[1],
+          requestHeaders: request.headers,
+          scenario
+        }));
+      }
+
+      const organizationEvidenceDigestMatch = url.pathname.match(/^\/organizations\/([^/]+)\/evidence\/digests\/([^/]+)$/);
+      if (request.method === "GET" && organizationEvidenceDigestMatch) {
+        return sendJson(response, 200, await orchestrator.findEvidenceByDigest({
+          organization_id: organizationEvidenceDigestMatch[1],
+          sha256: organizationEvidenceDigestMatch[2],
+          requestHeaders: request.headers,
+          scenario
+        }));
+      }
+
+      const organizationEvidencePreserveMatch = url.pathname.match(/^\/organizations\/([^/]+)\/evidence\/preserve$/);
+      if (request.method === "POST" && organizationEvidencePreserveMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.preserveEvidence({
+          organization_id: organizationEvidencePreserveMatch[1],
+          filename: body.filename,
+          asset_title: body.asset_title ?? body.title,
+          asset_type: body.asset_type,
+          sha256: body.sha256,
+          content: evidenceContentFromBody(body),
+          requestHeaders: request.headers,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 201, result);
+      }
+
+      const organizationEvidenceVerifyMatch = url.pathname.match(/^\/organizations\/([^/]+)\/evidence\/verify$/);
+      if (request.method === "POST" && organizationEvidenceVerifyMatch) {
+        const body = await readJson(request);
+        const result = await orchestrator.verifyEvidence({
+          organization_id: organizationEvidenceVerifyMatch[1],
+          sha256: body.sha256,
+          content: evidenceContentFromBody(body),
+          proof_id: body.proof_id,
+          version_id: body.version_id,
+          requestHeaders: request.headers,
+          scenario: body.scenario ?? scenario
+        });
+        return sendJson(response, 200, result);
+      }
+
       if (request.method === "GET" && url.pathname === "/audit-log") {
         return sendJson(response, 200, orchestrator.listAuditLog({
           workspaceId: url.searchParams.get("workspace_id") ?? undefined,
@@ -328,8 +378,15 @@ function corsHeaders() {
   return {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type"
+    "access-control-allow-headers": "content-type,authorization,cookie"
   };
+}
+
+function evidenceContentFromBody(body) {
+  if (body.content_text !== undefined || body.content_base64 !== undefined || body.content !== undefined) {
+    return body;
+  }
+  return undefined;
 }
 
 export async function startServer({ port = process.env.PORT ?? 3001, storageDir } = {}) {

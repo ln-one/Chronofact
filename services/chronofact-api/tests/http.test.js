@@ -6,14 +6,68 @@ import { join } from "node:path";
 import test from "node:test";
 import { createApp } from "../src/app.js";
 
-async function withServer(t) {
+async function withServer(t, env = {}) {
   const storageDir = await mkdtemp(join(tmpdir(), "chronofact-http-"));
-  const { handler } = createApp({ storageDir, env: {} });
+  const { handler } = createApp({ storageDir, env });
   const server = createServer(handler);
   await new Promise((resolve) => server.listen(0, resolve));
   t.after(async () => {
     await new Promise((resolve) => server.close(resolve));
     await rm(storageDir, { recursive: true, force: true });
+  });
+  const { port } = server.address();
+  return `http://127.0.0.1:${port}`;
+}
+
+async function withLimoraServer(t, { allowed = true, session = true, hidden = false } = {}) {
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, "http://localhost");
+    response.setHeader("content-type", "application/json; charset=utf-8");
+
+    if (url.pathname === "/v1/sessions/current") {
+      if (!session || !request.headers.cookie) {
+        response.writeHead(401);
+        response.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "No active session" } }));
+        return;
+      }
+      response.end(JSON.stringify({
+        data: {
+          currentSession: {
+            session: { id: "session-1", userId: "user-1" },
+            identity: { id: "user-1", email: "user@example.test" },
+            memberships: []
+          }
+        }
+      }));
+      return;
+    }
+
+    if (url.pathname === "/v1/organizations/org-1/permissions/check") {
+      if (hidden) {
+        response.writeHead(404);
+        response.end(JSON.stringify({ error: { code: "NOT_FOUND", message: "Organization not found" } }));
+        return;
+      }
+      const body = await readRequestJson(request);
+      response.end(JSON.stringify({
+        data: {
+          permissionCheck: {
+            allowed,
+            requestedPermissions: body.permissions ?? [],
+            grantedPermissions: allowed ? body.permissions ?? [] : [],
+            missingPermissions: allowed ? [] : body.permissions ?? []
+          }
+        }
+      }));
+      return;
+    }
+
+    response.writeHead(404);
+    response.end(JSON.stringify({ error: { code: "NOT_FOUND", message: "Not found" } }));
+  });
+  await new Promise((resolve) => server.listen(0, resolve));
+  t.after(async () => {
+    await new Promise((resolve) => server.close(resolve));
   });
   const { port } = server.address();
   return `http://127.0.0.1:${port}`;
@@ -86,6 +140,87 @@ test("HTTP API supports workspace-scoped submission, listing, and report export"
   assert.equal(report.status, 200);
   assert.match(reportBody.report.content, /# Experiment Delivery/);
   assert.match(reportBody.report.content, /Latest digest:/);
+});
+
+test("HTTP organization evidence APIs preserve and verify by hash", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const preserved = await postJson(`${baseUrl}/organizations/org-1/evidence/preserve`, {
+    filename: "report.md",
+    content_text: "original"
+  });
+  assert.equal(preserved.status, 201);
+  assert.equal(preserved.body.status, "preserved");
+  assert.equal(preserved.body.sha256, "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5");
+
+  const found = await postJson(`${baseUrl}/organizations/org-1/evidence/verify`, {
+    content_text: "original"
+  });
+  assert.equal(found.status, 200);
+  assert.equal(found.body.result, "preserved");
+  assert.equal(found.body.matches.length, 1);
+
+  const missing = await postJson(`${baseUrl}/organizations/org-1/evidence/verify`, {
+    content_text: "changed"
+  });
+  assert.equal(missing.status, 200);
+  assert.equal(missing.body.result, "not_preserved");
+
+  const mismatch = await postJson(`${baseUrl}/organizations/org-1/evidence/verify`, {
+    proof_id: preserved.body.proof_id,
+    content_text: "changed"
+  });
+  assert.equal(mismatch.status, 200);
+  assert.equal(mismatch.body.result, "mismatch");
+
+  const listed = await fetch(`${baseUrl}/organizations/org-1/evidence`);
+  const listedBody = await listed.json();
+  assert.equal(listed.status, 200);
+  assert.equal(listedBody.evidence.length, 1);
+
+  const byDigest = await fetch(`${baseUrl}/organizations/org-1/evidence/digests/${preserved.body.sha256}`);
+  const byDigestBody = await byDigest.json();
+  assert.equal(byDigest.status, 200);
+  assert.equal(byDigestBody.matches[0].proof_id, preserved.body.proof_id);
+});
+
+test("HTTP organization evidence APIs enforce Limora session and permissions", async (t) => {
+  const limoraUrl = await withLimoraServer(t, { session: true, allowed: true });
+  const baseUrl = await withServer(t, { CHRONOFACT_LIMORA_URL: limoraUrl });
+
+  const missingSession = await postJson(`${baseUrl}/organizations/org-1/evidence/preserve`, {
+    filename: "report.md",
+    content_text: "original"
+  });
+  assert.equal(missingSession.status, 401);
+
+  const allowed = await postJson(
+    `${baseUrl}/organizations/org-1/evidence/preserve`,
+    {
+      filename: "report.md",
+      content_text: "original"
+    },
+    { cookie: "better-auth.session_token=test" }
+  );
+  assert.equal(allowed.status, 201);
+});
+
+test("HTTP organization evidence APIs return 403 and 404 from Limora authorization", async (t) => {
+  const deniedLimoraUrl = await withLimoraServer(t, { session: true, allowed: false });
+  const deniedBaseUrl = await withServer(t, { CHRONOFACT_LIMORA_URL: deniedLimoraUrl });
+  const denied = await postJson(
+    `${deniedBaseUrl}/organizations/org-1/evidence/verify`,
+    { content_text: "original" },
+    { cookie: "better-auth.session_token=test" }
+  );
+  assert.equal(denied.status, 403);
+
+  const hiddenLimoraUrl = await withLimoraServer(t, { session: true, hidden: true });
+  const hiddenBaseUrl = await withServer(t, { CHRONOFACT_LIMORA_URL: hiddenLimoraUrl });
+  const hidden = await fetch(`${hiddenBaseUrl}/organizations/org-1/evidence`, {
+    headers: { cookie: "better-auth.session_token=test" }
+  });
+  assert.equal(hidden.status, 404);
 });
 
 test("HTTP API exposes explicit AI explanation endpoints", async (t) => {
@@ -353,14 +488,23 @@ test("HTTP API keeps audit hash chains scoped per workspace", async (t) => {
   assert.equal(firstIntegrityBody.audit_integrity.latest_entry_hash, firstAuditBody.audit_log.at(-1).entry_hash);
 });
 
-async function postJson(url, body) {
+async function postJson(url, body, headers = {}) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   return {
     status: response.status,
     body: await response.json()
   };
+}
+
+async function readRequestJson(request) {
+  const chunks = [];
+  for await (const chunk of request) {
+    chunks.push(chunk);
+  }
+  if (chunks.length === 0) return {};
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }

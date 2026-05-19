@@ -1,5 +1,5 @@
 const ADAPTER_CONTRACTS = {
-  limora: ["resolveIdentity"],
+  limora: ["resolveIdentity", "requirePermission"],
   dualweave: ["storeUpload"],
   chronestia: ["registerVersion", "verifyVersion"],
   ai: ["explain"]
@@ -30,4 +30,3 @@ export function assertChronofactAdapters(clients) {
   }
   return clients;
 }
-

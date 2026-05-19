@@ -3,6 +3,7 @@ import { createAiExplanationHttpClient } from "../aiHttpClient.js";
 import { assertChronofactAdapters } from "./contracts.js";
 import { createChronestiaHttpAdapter } from "./chronestiaHttpAdapter.js";
 import { createDualweaveHttpAdapter } from "./dualweaveHttpAdapter.js";
+import { createLimoraHttpAdapter } from "./limoraHttpAdapter.js";
 import {
   createAiExplanationMockAdapter,
   createChronestiaMockAdapter,
@@ -14,7 +15,12 @@ export function createChronofactAdapters({ env = process.env, storageDir } = {})
   const timeoutMs = Number(env.CHRONOFACT_HTTP_TIMEOUT_MS || 0) || undefined;
 
   const clients = {
-    limora: createDemoLimoraAdapter(),
+    limora: env.CHRONOFACT_LIMORA_URL
+      ? createLimoraHttpAdapter({
+          baseUrl: env.CHRONOFACT_LIMORA_URL,
+          timeoutMs: Number(env.CHRONOFACT_LIMORA_TIMEOUT_MS || 0) || timeoutMs || 3000
+        })
+      : createDemoLimoraAdapter(),
     dualweave: env.CHRONOFACT_DUALWEAVE_URL
       ? createDualweaveHttpAdapter({
           baseUrl: env.CHRONOFACT_DUALWEAVE_URL,
@@ -52,4 +58,3 @@ function readDualweaveExecution(env) {
     "CHRONOFACT_DUALWEAVE_EXECUTION_JSON or CHRONOFACT_DUALWEAVE_EXECUTION_FILE is required when CHRONOFACT_DUALWEAVE_URL is set."
   );
 }
-
