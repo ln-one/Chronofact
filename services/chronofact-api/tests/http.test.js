@@ -320,6 +320,39 @@ test("HTTP API verifies audit log hash-chain integrity", async (t) => {
   assert.equal(overviewBody.summary.latest_audit_hash, auditBody.audit_log.at(-1).entry_hash);
 });
 
+test("HTTP API keeps audit hash chains scoped per workspace", async (t) => {
+  const baseUrl = await withServer(t);
+
+  const first = await postJson(`${baseUrl}/workspaces`, { title: "First Workspace" });
+  const second = await postJson(`${baseUrl}/workspaces`, { title: "Second Workspace" });
+  await postJson(`${baseUrl}/workspaces/${first.body.workspace.workspace_id}/assets`, {
+    filename: "first.md",
+    content_text: "first"
+  });
+  await postJson(`${baseUrl}/workspaces/${second.body.workspace.workspace_id}/assets`, {
+    filename: "second.md",
+    content_text: "second"
+  });
+  await postJson(`${baseUrl}/workspaces/${first.body.workspace.workspace_id}/status`, {
+    status: "under_review"
+  });
+
+  const firstAudit = await fetch(`${baseUrl}/audit-log?workspace_id=${first.body.workspace.workspace_id}`);
+  const firstAuditBody = await firstAudit.json();
+  const secondAudit = await fetch(`${baseUrl}/audit-log?workspace_id=${second.body.workspace.workspace_id}`);
+  const secondAuditBody = await secondAudit.json();
+  assert.equal(firstAuditBody.audit_log[0].previous_hash, null);
+  assert.equal(firstAuditBody.audit_log[1].previous_hash, firstAuditBody.audit_log[0].entry_hash);
+  assert.equal(firstAuditBody.audit_log.at(-1).previous_hash, firstAuditBody.audit_log.at(-2).entry_hash);
+  assert.equal(secondAuditBody.audit_log[0].previous_hash, null);
+
+  const firstIntegrity = await fetch(`${baseUrl}/audit-log/verify?workspace_id=${first.body.workspace.workspace_id}`);
+  const firstIntegrityBody = await firstIntegrity.json();
+  assert.equal(firstIntegrityBody.audit_integrity.valid, true);
+  assert.equal(firstIntegrityBody.audit_integrity.checked_count, firstAuditBody.audit_log.length);
+  assert.equal(firstIntegrityBody.audit_integrity.latest_entry_hash, firstAuditBody.audit_log.at(-1).entry_hash);
+});
+
 async function postJson(url, body) {
   const response = await fetch(url, {
     method: "POST",

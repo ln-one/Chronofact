@@ -32,6 +32,16 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
     return createHash("sha256").update(JSON.stringify(entry)).digest("hex");
   }
 
+  function auditScopeKey(entry) {
+    return entry.workspace_id ?? "global";
+  }
+
+  function latestAuditHashForScope(workspaceId) {
+    const scopeKey = workspaceId ?? "global";
+    const previousEntry = auditLogs.findLast((entry) => auditScopeKey(entry) === scopeKey);
+    return previousEntry?.entry_hash ?? null;
+  }
+
   return {
     createWorkspace({
       title,
@@ -455,7 +465,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         target_id,
         summary,
         created_at: clock().toISOString(),
-        previous_hash: auditLogs.at(-1)?.entry_hash ?? null
+        previous_hash: latestAuditHashForScope(workspaceId)
       };
       entry.entry_hash = auditHash(entry);
       auditLogs.push(entry);
@@ -474,10 +484,16 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
     },
 
     verifyAuditChain({ workspaceId, assetId, versionId, action, createdFrom, createdTo } = {}) {
-      let previousHash = null;
+      const previousHashByScope = new Map();
       let firstInvalid = null;
 
-      for (const entry of auditLogs) {
+      const chainEntries = workspaceId
+        ? auditLogs.filter((entry) => entry.workspace_id === workspaceId)
+        : auditLogs;
+
+      for (const entry of chainEntries) {
+        const scopeKey = auditScopeKey(entry);
+        const previousHash = previousHashByScope.get(scopeKey) ?? null;
         const { entry_hash: entryHash, ...hashableEntry } = entry;
         const expectedHash = auditHash(hashableEntry);
         if (entry.previous_hash !== previousHash || entryHash !== expectedHash) {
@@ -490,7 +506,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
           };
           break;
         }
-        previousHash = entryHash;
+        previousHashByScope.set(scopeKey, entryHash);
       }
 
       const scopedEntries = this.listAuditLogs({
@@ -504,9 +520,9 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
 
       return {
         valid: firstInvalid === null,
-        checked_count: auditLogs.length,
+        checked_count: chainEntries.length,
         scoped_count: scopedEntries.length,
-        latest_entry_hash: auditLogs.at(-1)?.entry_hash ?? null,
+        latest_entry_hash: chainEntries.at(-1)?.entry_hash ?? null,
         first_invalid: firstInvalid
       };
     },

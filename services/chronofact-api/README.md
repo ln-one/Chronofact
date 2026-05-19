@@ -250,12 +250,12 @@ curl -s http://localhost:3001/workspaces/ws_001/status \
 Lists audit events. Optional filters: `workspace_id`, `asset_id`, `version_id`,
 `action`, `created_from`, and `created_to`.
 
-Each audit event includes `previous_hash` and `entry_hash` so the timeline can
-be shown as a lightweight tamper-evident chain for the course demo.
+Each audit event includes `previous_hash` and `entry_hash` so each workspace
+timeline can be shown as a lightweight tamper-evident chain for the course demo.
 
 ### `GET /audit-log/verify`
 
-Verifies the audit log hash chain and returns `valid`, `checked_count`,
+Verifies the workspace-scoped audit log hash chain and returns `valid`, `checked_count`,
 `scoped_count`, `latest_entry_hash`, and the first invalid entry if one is
 detected.
 

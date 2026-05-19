@@ -348,6 +348,52 @@ test("audit log entries form a verifiable hash chain", async (t) => {
   assert.equal(overview.summary.latest_audit_hash, audit.audit_log.at(-1).entry_hash);
 });
 
+test("workspace audit hash chains stay scoped when workspaces interleave", async (t) => {
+  const { orchestrator, storageDir } = await createTestOrchestrator();
+  t.after(() => rm(storageDir, { recursive: true, force: true }));
+
+  const first = await orchestrator.createWorkspace({ title: "First Workspace" });
+  const second = await orchestrator.createWorkspace({ title: "Second Workspace" });
+  await orchestrator.submit({
+    workspace_id: first.workspace.workspace_id,
+    filename: "first.md",
+    content: { content_text: "first" }
+  });
+  await orchestrator.submit({
+    workspace_id: second.workspace.workspace_id,
+    filename: "second.md",
+    content: { content_text: "second" }
+  });
+  await orchestrator.updateWorkspaceStatus({
+    workspace_id: first.workspace.workspace_id,
+    status: "under_review"
+  });
+
+  const firstAudit = orchestrator.listAuditLog({
+    workspaceId: first.workspace.workspace_id
+  }).audit_log;
+  const secondAudit = orchestrator.listAuditLog({
+    workspaceId: second.workspace.workspace_id
+  }).audit_log;
+
+  assert.equal(firstAudit[0].previous_hash, null);
+  assert.equal(firstAudit[1].previous_hash, firstAudit[0].entry_hash);
+  assert.equal(firstAudit.at(-1).previous_hash, firstAudit.at(-2).entry_hash);
+  assert.equal(secondAudit[0].previous_hash, null);
+
+  const firstIntegrity = orchestrator.verifyAuditLog({
+    workspaceId: first.workspace.workspace_id
+  }).audit_integrity;
+  const secondIntegrity = orchestrator.verifyAuditLog({
+    workspaceId: second.workspace.workspace_id
+  }).audit_integrity;
+  assert.equal(firstIntegrity.valid, true);
+  assert.equal(firstIntegrity.checked_count, firstAudit.length);
+  assert.equal(firstIntegrity.latest_entry_hash, firstAudit.at(-1).entry_hash);
+  assert.equal(secondIntegrity.valid, true);
+  assert.equal(secondIntegrity.checked_count, secondAudit.length);
+});
+
 test("verification detects digest mismatch without treating it as proof success", async (t) => {
   const { orchestrator, storageDir } = await createTestOrchestrator();
   t.after(() => rm(storageDir, { recursive: true, force: true }));
