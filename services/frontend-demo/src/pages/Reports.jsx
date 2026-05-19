@@ -165,9 +165,28 @@ export default function Reports() {
         <section className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="font-semibold text-slate-900">报告内容预览</p>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-              {report ? "已生成" : "等待生成"}
-            </span>
+            <div className="flex items-center gap-2">
+              {markdown && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob([markdown], { type: "text/markdown" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `report-${report.type}-${Date.now()}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="rounded-lg border border-[#ead89b] bg-gradient-to-r from-[#f7e6a9] via-[#f1d88d] to-[#e8c66f] px-4 py-2 text-sm font-semibold text-[#5a3908] shadow-sm shadow-amber-900/10 transition hover:from-[#faedbd] hover:via-[#f4df9c] hover:to-[#edcf7d]"
+                >
+                  下载报告
+                </button>
+              )}
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                {report ? "已生成" : "等待生成"}
+              </span>
+            </div>
           </div>
           {markdown ? (
             <pre className="max-h-[620px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#dfe8e2] bg-[#fbfdfb] p-4 text-sm leading-6 text-slate-800">

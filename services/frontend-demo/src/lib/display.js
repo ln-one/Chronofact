@@ -49,6 +49,11 @@ export function displayStatus(value) {
   return statusLabels[value] || displayValue(value);
 }
 
+export function displayWorkspaceName(workspace) {
+  const title = String(workspace?.title || "").trim();
+  return title || workspace?.workspace_id || "未命名空间";
+}
+
 export function displayDateTime(value) {
   if (!value) {
     return "暂无";

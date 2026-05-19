@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { createReview, getAsset, getVersionEvidence, listAssets, submitAssetVersion } from "../services/chronofactApi";
+import { createReview, getAsset, getVersionEvidence, listAssets, listWorkspaces, submitAssetVersion } from "../services/chronofactApi";
 import { fileToBase64, formatBytes, sha256File } from "../services/fileDigest";
 import { getStatusMeta } from "../lib/status";
-import { displayAssetType, displayDateTime, displayStatus, displayValue } from "../lib/display";
+import { displayAssetType, displayDateTime, displayStatus, displayValue, displayWorkspaceName } from "../lib/display";
 
 export default function Assets() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [workspaces, setWorkspaces] = useState([]);
+  const [workspaceId, setWorkspaceId] = useState(params.get("workspace_id") || localStorage.getItem("lastWorkspaceId") || "");
   const [assets, setAssets] = useState([]);
   const [selected, setSelected] = useState(params.get("asset_id") || "");
   const [detail, setDetail] = useState(null);
@@ -27,11 +29,21 @@ export default function Assets() {
   const [reviewing, setReviewing] = useState(false);
 
   useEffect(() => {
-    listAssets()
+    listWorkspaces()
+      .then((payload) => setWorkspaces(payload.workspaces || []))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    setSelected("");
+    setDetail(null);
+    setEvidence(null);
+    listAssets(workspaceId ? { workspace_id: workspaceId } : {})
       .then((payload) => {
         const nextAssets = payload.assets || [];
         setAssets(nextAssets);
-        const firstId = selected || nextAssets[0]?.asset_id || "";
+        const firstId = nextAssets[0]?.asset_id || "";
         if (firstId) {
           selectAsset(firstId);
         } else {
@@ -42,7 +54,7 @@ export default function Assets() {
         setError(caught.message);
         setLoading(false);
       });
-  }, []);
+  }, [workspaceId]);
 
   async function selectAsset(assetId) {
     setSelected(assetId);
@@ -156,7 +168,16 @@ export default function Assets() {
         <aside className="rounded-2xl border border-[#dfe8e2] bg-white shadow-sm">
           <div className="border-b border-[#dfe8e2] px-4 py-3">
             <p className="text-base font-semibold text-slate-900">文件列表</p>
-            <p className="mt-1 text-sm text-slate-500">来自系统存证记录</p>
+            <select
+              value={workspaceId}
+              onChange={(e) => { setWorkspaceId(e.target.value); setParams(e.target.value ? { workspace_id: e.target.value } : {}); }}
+              className="mt-2 h-9 w-full rounded-lg border border-[#dfe8e2] bg-white px-2 text-sm outline-none focus:ring-2 focus:ring-emerald-100"
+            >
+              <option value="">全部项目空间</option>
+              {workspaces.map((ws, index) => (
+                <option key={ws.workspace_id} value={ws.workspace_id}>{displayWorkspaceName(ws)}</option>
+              ))}
+            </select>
           </div>
           <div className="divide-y divide-[#e7eee9]">
             {assets.map((asset) => {
@@ -167,7 +188,7 @@ export default function Assets() {
                   key={asset.asset_id}
                   type="button"
                   onClick={() => selectAsset(asset.asset_id)}
-                  className={`w-full px-4 py-3 text-left hover:bg-[#fdf9fa] ${selected === asset.asset_id ? "bg-[#fcf6f7]" : ""}`}
+                  className={`w-full px-4 py-3 text-left transition-colors hover:bg-[#f0f6ff] ${selected === asset.asset_id ? "bg-[#f3f8fe] shadow-[inset_3px_0_0_#93c5fd]" : ""}`}
                 >
                   <p className="text-base font-semibold text-slate-900">{asset.title || asset.asset_id}</p>
                   <p className="mt-1 text-sm text-slate-500">{asset.asset_id} · {displayAssetType(asset.asset_type)}</p>

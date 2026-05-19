@@ -1,3 +1,4 @@
+import submitIllustration from "../assets/submit-illustration.png";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -8,7 +9,7 @@ import {
 } from "../services/chronofactApi";
 import { fileToBase64, formatBytes, sha256File } from "../services/fileDigest";
 import { getStatusMeta } from "../lib/status";
-import { displayAssetType, displayStatus, displayValue } from "../lib/display";
+import { displayAssetType, displayStatus, displayValue, displayWorkspaceName } from "../lib/display";
 
 const assetTypes = [
   { value: "lab_report", label: "实验报告" },
@@ -24,7 +25,7 @@ export default function Submit() {
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
   const [manualWorkspaceOpen, setManualWorkspaceOpen] = useState(false);
   const [form, setForm] = useState({
-    organizationId: defaultOrganizationId,
+    organizationId: localStorage.getItem("lastWorkspaceId") || defaultOrganizationId,
     assetTitle: "",
     assetType: "lab_report",
   });
@@ -87,7 +88,8 @@ export default function Submit() {
   const hashMatched = result ? result.sha256 === fileHash : null;
   const isStored = Boolean(result?.proof_id);
   const hasChainRecord = Boolean(result?.proof?.fact_id && result?.proof?.receipt_id);
-  const selectedWorkspace = workspaces.find((workspace) => workspace.workspace_id === form.organizationId);
+  const selectableWorkspaces = workspaces.filter((workspace) => workspace.workspace_id !== defaultOrganizationId);
+  const selectedWorkspace = selectableWorkspaces.find((workspace) => workspace.workspace_id === form.organizationId);
 
   async function continueDuplicateSubmit() {
     const pending = duplicateDialog;
@@ -119,7 +121,10 @@ export default function Submit() {
         <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
           <div className="grid gap-5 md:grid-cols-2">
             <div className="relative md:col-span-2">
-              <span className="text-base font-semibold text-slate-700">选择项目空间</span>
+              <span className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" /></svg>
+                选择项目空间
+              </span>
               <button
                 type="button"
                 onClick={() => setWorkspacePickerOpen((open) => !open)}
@@ -127,7 +132,7 @@ export default function Submit() {
               >
                 <span>
                   <span className="block font-semibold text-slate-900">
-                    {selectedWorkspace ? workspaceDisplayName(selectedWorkspace, workspaces.indexOf(selectedWorkspace)) : "默认课程空间"}
+                    {selectedWorkspace ? displayWorkspaceName(selectedWorkspace) : "默认课程空间"}
                   </span>
                   <span className="mt-0.5 block text-sm text-slate-500">
                     {selectedWorkspace
@@ -144,6 +149,7 @@ export default function Submit() {
                     type="button"
                     onClick={() => {
                       setForm((current) => ({ ...current, organizationId: defaultOrganizationId }));
+                      localStorage.setItem("lastWorkspaceId", defaultOrganizationId);
                       setWorkspacePickerOpen(false);
                     }}
                     className={`block w-full px-4 py-3 text-left transition ${
@@ -153,19 +159,20 @@ export default function Submit() {
                     <span className="block text-base font-semibold text-slate-900">默认课程空间</span>
                     <span className="mt-0.5 block text-sm text-slate-500">适用于本次演示或未单独分组的教学文件</span>
                   </button>
-                  {workspaces.map((workspace, index) => (
+                  {selectableWorkspaces.map((workspace, index) => (
                     <button
                       key={workspace.workspace_id}
                       type="button"
                       onClick={() => {
                         setForm((current) => ({ ...current, organizationId: workspace.workspace_id }));
+                        localStorage.setItem("lastWorkspaceId", workspace.workspace_id);
                         setWorkspacePickerOpen(false);
                       }}
                       className={`block w-full border-t border-[#edf2ef] px-4 py-3 text-left transition ${
-                        form.organizationId === workspace.workspace_id ? "bg-[#fcf6f7]" : "hover:bg-[#fdf9fa]"
+                        form.organizationId === workspace.workspace_id ? "bg-[#f0f5fb]" : "hover:bg-[#f5f8fd]"
                       }`}
                     >
-                      <span className="block text-base font-semibold text-slate-900">{workspaceDisplayName(workspace, index)}</span>
+                      <span className="block text-base font-semibold text-slate-900">{displayWorkspaceName(workspace)}</span>
                       <span className="mt-0.5 block text-sm text-slate-500">
                         {displayAssetType(workspace.workspace_type)} · {workspaceStatusLabel(workspace.status)}
                       </span>
@@ -197,7 +204,10 @@ export default function Submit() {
             </div>
 
             <label className="block">
-              <span className="text-base font-semibold text-slate-700">文件标题</span>
+              <span className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>
+                文件标题
+              </span>
               <input
                 name="assetTitle"
                 value={form.assetTitle}
@@ -208,7 +218,10 @@ export default function Submit() {
             </label>
 
             <label className="block">
-              <span className="text-base font-semibold text-slate-700">文件类型</span>
+              <span className="flex items-center gap-2 text-base font-semibold text-slate-700">
+                <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 0 0 3 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 0 0 5.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 0 0 9.568 3Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6Z" /></svg>
+                文件类型
+              </span>
               <select
                 name="assetType"
                 value={form.assetType}
@@ -223,7 +236,10 @@ export default function Submit() {
           </div>
 
           <div className="mt-6">
-            <label className="mb-1.5 block text-base font-semibold text-slate-700">选择文件</label>
+            <label className="mb-1.5 flex items-center gap-2 text-base font-semibold text-slate-700">
+                <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" /></svg>
+                选择文件
+              </label>
             <input
               type="file"
               onChange={async (event) => {
@@ -242,7 +258,10 @@ export default function Submit() {
               <Meta label="当前阶段" value={stageLabel(stage)} />
             </div>
             <div className="mt-3 rounded-lg border border-teal-100 bg-teal-50 p-3">
-              <p className="text-sm font-semibold text-teal-700">文件数字指纹（SHA-256）</p>
+              <p className="flex items-center gap-2 text-sm font-semibold text-teal-700">
+                <svg className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M7.864 4.243A7.5 7.5 0 0 1 19.5 10.5c0 2.92-.556 5.709-1.568 8.268M5.742 6.364A7.465 7.465 0 0 0 4.5 10.5a7.464 7.464 0 0 1-1.15 3.993m1.989 3.559A11.209 11.209 0 0 0 8.25 10.5a3.75 3.75 0 1 1 7.5 0c0 .527-.021 1.049-.064 1.565M12 10.5a14.94 14.94 0 0 1-3.6 9.75m6.633-4.596a18.666 18.666 0 0 1-2.485 5.33" /></svg>
+                文件数字指纹（SHA-256）
+              </p>
               <p className="mt-1 break-all font-mono text-sm text-teal-950">{fileHash || "选择文件后自动生成，用于后续核验文件是否一致"}</p>
             </div>
           </div>
@@ -255,14 +274,23 @@ export default function Submit() {
             disabled={!file || busy}
             className="mt-6 rounded-lg border border-[#ead89b] bg-gradient-to-r from-[#f7e6a9] via-[#f1d88d] to-[#e8c66f] px-5 py-2.5 text-sm font-semibold text-[#5a3908] shadow-sm shadow-amber-900/10 transition hover:from-[#faedbd] hover:via-[#f4df9c] hover:to-[#edcf7d] active:scale-[0.99] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
-            {busy ? "正在提交..." : "提交文件并存证"}
+            {busy ? "正在提交..." : (
+              <span className="flex items-center gap-2">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+                提交文件并存证
+              </span>
+            )}
           </button>
         </section>
 
         <section className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
           <p className="mb-4 text-lg font-semibold text-slate-900">提交结果</p>
           {!result ? (
-            <p className="text-base leading-7 text-slate-400">提交后这里会显示文件保存、版本登记、上链回执和核验结果。</p>
+            <div className="flex flex-col items-center py-4">
+              <img src={submitIllustration} alt="" className="w-full max-w-[320px]" />
+              <p className="mt-2 text-base font-semibold text-slate-700">暂无提交结果</p>
+              <p className="mt-1 text-sm text-slate-400">请在左侧填写信息并提交文件</p>
+            </div>
           ) : (
             <div className="space-y-4">
               <StatusBadge status={result.status} />
@@ -370,12 +398,6 @@ function stageLabel(stage) {
     submitting: "正在登记存证",
     done: "完成",
   }[stage] || stage;
-}
-
-function workspaceDisplayName(workspace, index) {
-  const title = String(workspace?.title || "").trim();
-  const looksLikeInternalValue = !title || title === workspace?.workspace_id || /^[0-9_-]{1,4}$/i.test(title);
-  return looksLikeInternalValue ? `课程空间 ${index + 1}` : title;
 }
 
 function workspaceStatusLabel(status) {

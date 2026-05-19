@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   defaultOrganizationId,
   findOrganizationEvidenceByDigest,
   listOrganizationEvidence,
+  listWorkspaces,
   verifyOrganizationEvidence,
 } from "../services/chronofactApi";
 import { fileToBase64, formatBytes, sha256File } from "../services/fileDigest";
 import { getStatusMeta } from "../lib/status";
-import { displayStatus, displayValue } from "../lib/display";
+import { displayStatus, displayValue, displayWorkspaceName } from "../lib/display";
 
 export default function Verify() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const [organizationId, setOrganizationId] = useState(defaultOrganizationId);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [organizationId, setOrganizationId] = useState(
+    localStorage.getItem("lastWorkspaceId") || defaultOrganizationId
+  );
   const [file, setFile] = useState(null);
   const [fileHash, setFileHash] = useState("");
   const [matchedRecord, setMatchedRecord] = useState(null);
@@ -26,6 +30,15 @@ export default function Verify() {
   const [recordsModal, setRecordsModal] = useState({ open: false, records: [], organizationId: "" });
   const [error, setError] = useState("");
   const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    listWorkspaces().then((p) => setWorkspaces(p.workspaces || [])).catch(() => {});
+  }, []);
+
+  function handleWorkspaceChange(id) {
+    setOrganizationId(id);
+    localStorage.setItem("lastWorkspaceId", id);
+  }
 
   async function chooseFile(event) {
     const nextFile = event.target.files?.[0] || null;
@@ -131,12 +144,8 @@ export default function Verify() {
       <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
         <div className="grid gap-5 lg:grid-cols-[220px_1fr_auto]">
           <label className="block">
-            <span className="text-base font-semibold text-slate-700">项目空间编号</span>
-            <input
-              value={organizationId}
-              onChange={(event) => setOrganizationId(event.target.value)}
-              className="mt-1.5 h-12 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-emerald-100"
-            />
+            <span className="text-base font-semibold text-slate-700">选择项目空间</span>
+            <WorkspaceSelect workspaces={workspaces} value={organizationId} onChange={handleWorkspaceChange} />
           </label>
           <label className="block">
             <span className="text-base font-semibold text-slate-700">上传待校验文件</span>
@@ -183,12 +192,8 @@ export default function Verify() {
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[220px_1fr_auto]">
           <label className="block">
-            <span className="text-base font-semibold text-slate-700">项目空间编号</span>
-            <input
-              value={organizationId}
-              onChange={(event) => setOrganizationId(event.target.value)}
-              className="mt-1.5 h-12 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 py-2 text-base outline-none focus:ring-2 focus:ring-emerald-100"
-            />
+            <span className="text-base font-semibold text-slate-700">选择项目空间</span>
+            <WorkspaceSelect workspaces={workspaces} value={organizationId} onChange={handleWorkspaceChange} />
           </label>
           <label className="block">
             <span className="text-base font-semibold text-slate-700">SHA-256 数字指纹</span>
@@ -302,6 +307,21 @@ function StateLine({ ok, label, emphasis = false }) {
     }`}>
       {label}
     </div>
+  );
+}
+
+function WorkspaceSelect({ workspaces, value, onChange }) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="mt-1.5 h-12 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 text-base outline-none focus:ring-2 focus:ring-emerald-100"
+    >
+      <option value={defaultOrganizationId}>默认课程空间</option>
+      {workspaces.map((ws) => (
+        <option key={ws.workspace_id} value={ws.workspace_id}>{displayWorkspaceName(ws)}</option>
+      ))}
+    </select>
   );
 }
 
