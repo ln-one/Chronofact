@@ -18,6 +18,12 @@ Chronofact now centers around three reusable service boundaries:
 Chronofact owns the product-facing workflow that composes those services into a
 coherent application.
 
+The phase-one Member A backend lives in `services/chronofact-api`. It is an
+adapter-driven orchestration API for asset submission, digest calculation,
+version linking, upload handoff, witness registration, verification, and AI
+explanation handoff. It defaults to demo adapters, and can call the real AI,
+Dualweave, and Chronestia HTTP services through environment variables.
+
 ## Current Product Direction
 
 The minimum product flow is:
@@ -46,6 +52,7 @@ services to one narrow ontology.
 ├── scripts/         # Small repo-level utility scripts
 ├── services/        # Independent services and reusable submodules
 │   ├── chronestia/  # Witness kernel
+│   ├── chronofact-api/ # Chronofact-owned phase-one orchestration API
 │   ├── dualweave/   # Upload / delivery engine
 │   └── limora/      # Identity authority
 ├── Makefile         # Common developer entry points
@@ -89,3 +96,37 @@ git submodule update --init --recursive
 
 - [docs/architecture.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/architecture.md)
 - [docs/contributing.md](/Users/ln1/Projects/BlockChain-spec/Chronofact/docs/contributing.md)
+
+## Phase-One Backend Demo
+
+```bash
+cd services/chronofact-api
+npm test
+npm start
+```
+
+See `services/chronofact-api/README.md` for endpoint examples, adapter
+environment variables, and failure-state scenarios.
+
+## Phase-One Integrated Check
+
+After dependencies are installed, run the root verification gate:
+
+```bash
+npm run check:phase-one
+```
+
+It runs:
+
+- Chronofact API tests
+- AI explanation tests
+- Solidity contract compilation
+- frontend production build
+- API-to-AI integration smoke test
+
+For the live frontend demo, start the API and then run the frontend with:
+
+```powershell
+$env:VITE_CHRONOFACT_API_URL="http://127.0.0.1:3001"
+npm --prefix services/frontend-demo run dev
+```

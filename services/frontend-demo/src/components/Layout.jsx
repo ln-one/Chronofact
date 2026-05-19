@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { isLiveApiEnabled } from "../services/mockChronofactApi";
 
 const navItems = [
   { to: "/dashboard", label: "概览", icon: "◈", end: true },
@@ -19,6 +20,7 @@ const breadcrumbMap = {
 export default function Layout() {
   const { pathname } = useLocation();
   const crumb = breadcrumbMap[pathname] ?? "页面";
+  const liveApiEnabled = isLiveApiEnabled();
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#fbfdfb] font-sans text-slate-800">
@@ -88,7 +90,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700">
             <span className="h-2 w-2 rounded-full bg-teal-500" />
-            存证服务在线
+            {liveApiEnabled ? "后端实时模式" : "前端演示模式"}
           </div>
         </header>
 

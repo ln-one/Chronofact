@@ -38,6 +38,66 @@ docker compose ps
 - `chronofact-workspace` 处于 `Up` 状态
 - Chronestia 默认映射到本机 `8080` 端口
 
+## 第一阶段整体验证
+
+其他成员第一阶段代码合并后，可在根目录运行：
+
+```powershell
+npm run check:phase-one
+```
+
+该命令会依次验证：
+
+- 组员 A：Chronofact API 测试
+- 组员 D：AI explanation 单元测试
+- 组员 C：Solidity 合约编译
+- 组员 B：前端 production build
+- 整体链路：Chronofact API 调用 AI explanation 服务并完成提交、版本、核验和失败状态 smoke test
+
+## 前后端联调
+
+启动 AI explanation 服务：
+
+```powershell
+cd services\ai-explanation
+python run_server.py
+```
+
+启动 Chronofact API，并让它调用 AI explanation 服务：
+
+```powershell
+cd services\chronofact-api
+$env:CHRONOFACT_AI_URL="http://127.0.0.1:8000"
+npm start
+```
+
+如果同时要让 Chronofact API 调用 Docker 暴露的 Chronestia：
+
+```powershell
+$env:CHRONOFACT_CHRONESTIA_URL="http://127.0.0.1:8080"
+npm start
+```
+
+如果要调用 Dualweave 上传服务，还需要提供 Dualweave 的 execution spec：
+
+```powershell
+$env:CHRONOFACT_DUALWEAVE_URL="http://127.0.0.1:8081"
+$env:CHRONOFACT_DUALWEAVE_EXECUTION_FILE="configs\dualweave.execution.json"
+npm start
+```
+
+当前 Limora 身份仍使用固定 demo identity，等上传和存证链路稳定后再替换为 Limora HTTP 身份。
+
+启动前端实时联调模式：
+
+```powershell
+cd services\frontend-demo
+$env:VITE_CHRONOFACT_API_URL="http://127.0.0.1:3001"
+npm run dev
+```
+
+未设置 `VITE_CHRONOFACT_API_URL` 时，前端仍使用本地 mock contract 场景。
+
 ## 进入开发容器
 
 ```powershell
