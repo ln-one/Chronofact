@@ -1,181 +1,217 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
-import { listScenarios } from "../services/mockChronofactApi";
+import {
+  chronofactApiBaseUrl,
+  health,
+  listAssets,
+  listEvidence,
+  listReviews,
+  listWorkspaces,
+  verifyAuditLog,
+} from "../services/chronofactApi";
 import { getStatusMeta } from "../lib/status";
+import { displayAssetType, displayStatus, displayValue } from "../lib/display";
 
-const stats = [
-  { label: "资产总数", value: "7", icon: "▦", tone: "bg-emerald-50 text-emerald-700" },
-  { label: "已核验", value: "3", icon: "✓", tone: "bg-teal-50 text-teal-700" },
-  { label: "待处理", value: "2", icon: "◷", tone: "bg-amber-50 text-amber-700" },
-  { label: "异常", value: "2", icon: "!", tone: "bg-rose-50 text-rose-700" },
-];
+const serviceStatusLabels = {
+  ok: "正常",
+  loading: "加载中",
+  offline: "离线",
+};
 
 export default function Overview() {
   const navigate = useNavigate();
-  const scenarios = listScenarios();
-  const [starting, setStarting] = useState(false);
+  const [state, setState] = useState({ loading: true, error: "", data: null });
 
-  async function startSubmit() {
-    setStarting(true);
-    window.setTimeout(() => {
-      navigate("/submit");
-    }, 320);
+  async function load() {
+    setState((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const [service, workspaces, assets, evidence, reviews, audit] = await Promise.all([
+        health(),
+        listWorkspaces(),
+        listAssets(),
+        listEvidence(),
+        listReviews(),
+        verifyAuditLog(),
+      ]);
+      setState({
+        loading: false,
+        error: "",
+        data: {
+          service,
+          workspaces: workspaces.workspaces || [],
+          assets: assets.assets || [],
+          evidence: evidence.evidence || [],
+          reviews: reviews.reviews || [],
+          audit: audit.audit_integrity,
+        },
+      });
+    } catch (error) {
+      setState({ loading: false, error: error.message, data: null });
+    }
   }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const data = state.data;
+  const preservedCount = data?.evidence.filter((item) => item.verification_status === "verified").length ?? 0;
+  const attentionCount =
+    data?.evidence.filter((item) => item.verification_status !== "verified").length +
+      data?.reviews.filter((item) => ["needs_revision", "rejected"].includes(item.decision)).length || 0;
 
   return (
     <div className="space-y-6">
-      <section className="relative grid overflow-hidden rounded-3xl border border-[#dfe8e2] bg-white/80 p-7 shadow-xl shadow-emerald-900/5 backdrop-blur lg:grid-cols-[1fr_430px]">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,#d8f3e3_0%,transparent_38%)]" />
-        <div className="relative max-w-2xl py-4">
-          <div className="mb-4 inline-flex rounded-full border border-[#dfe8e2] bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-            高校教学治理 · 可信存证
+      <section className="relative overflow-hidden rounded-2xl border border-[#dfe8e2] bg-[linear-gradient(135deg,#ffffff_0%,#f5fbf8_48%,#eef7fb_100%)] p-6 shadow-sm">
+        <div className="pointer-events-none absolute right-8 top-8 h-28 w-28 rounded-full bg-emerald-100/35 blur-2xl" />
+        <div className="pointer-events-none absolute bottom-0 left-1/2 h-20 w-72 -translate-x-1/2 rounded-full bg-sky-100/35 blur-2xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-5">
+          <div className="max-w-3xl">
+            <p className="inline-flex rounded-full border border-emerald-100 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 shadow-sm">
+              Chronofact Workspace
+            </p>
+            <h1 className="mt-3 text-3xl font-bold text-slate-950">工作台概览</h1>
+            <p className="mt-2 max-w-2xl text-base leading-7 text-slate-600">
+              查看已提交文件、存证状态、待处理事项和审计链完整性，快速确认当前教学材料是否可以继续核验或导出报告。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <StatusPill label="服务状态" value={serviceStatusLabels[data?.service.status || (state.loading ? "loading" : "offline")] || data?.service.status} active />
+              <StatusPill label="服务地址" value={chronofactApiBaseUrl.replace(/^https?:\/\//, "")} muted />
+              <StatusPill label="审计链" value={data?.audit?.valid ? "完整" : state.loading ? "检查中" : "待确认"} active={data?.audit?.valid} />
+            </div>
           </div>
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-slate-950">
-            教学证据可信存证与智能核验
-          </h1>
-          <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-            面向实验报告、课程作业和教学文件，帮助完成文件存证、版本追踪、回执核验与 AI 辅助说明。
-            用户可以快速查看文件是否被篡改、证明是否可用，并获得下一步人工复核建议。
-          </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="flex gap-2">
             <button
               type="button"
-              onClick={startSubmit}
-              disabled={starting}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-emerald-900/20 transition duration-200 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-lg hover:shadow-emerald-900/20 active:scale-[0.98] disabled:cursor-wait disabled:opacity-80"
+              onClick={() => navigate("/workspaces")}
+              className="rounded-lg border border-[#cbd8e6] bg-white/90 px-5 py-2.5 text-sm font-semibold text-[#334965] shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
             >
-              {starting && <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
-              {starting ? "正在进入" : "提交教学文件"}
+              管理项目空间
             </button>
             <button
               type="button"
-              onClick={() => navigate("/verify/normalSubmission")}
-              className="rounded-xl border border-[#dfe8e2] bg-white px-4 py-2 text-sm font-medium text-emerald-800 shadow-sm transition duration-200 hover:border-[#cfded4] hover:bg-emerald-50 hover:shadow-lg hover:shadow-emerald-900/10 active:scale-[0.98]"
+              onClick={load}
+              className="rounded-lg border border-[#dfe8e2] bg-white/90 px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-white"
             >
-              查看核验示例
+              刷新
             </button>
           </div>
         </div>
-        <div className="relative hidden lg:block">
-          <div className="absolute -inset-4 rounded-[2rem] bg-emerald-100/60 blur-xl" />
-          <div className="relative flex h-full min-h-[260px] flex-col justify-between rounded-2xl border border-[#dfe8e2] bg-[#fbfdfb] p-6 shadow-lg shadow-emerald-900/5">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Evidence Flow</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">教学文件证据链</p>
-              </div>
-              <span className="rounded-full bg-[#f8e8a8] px-3 py-1 text-xs font-semibold text-emerald-950">
-                SHA-256
-              </span>
-            </div>
 
-            <div className="space-y-3">
-              <FlowItem index="1" title="文件提交" text="upload_record / storage_ref" />
-              <FlowItem index="2" title="摘要固化" text="asset_version / digest" />
-              <FlowItem index="3" title="回执核验" text="receipt / trace / result" />
-            </div>
-
-            <div className="rounded-2xl border border-[#dfe8e2] bg-white/80 p-4">
-              <div className="mb-2 flex items-center justify-between text-xs">
-                <span className="font-medium text-slate-500">verification result</span>
-                <span className="rounded-full bg-teal-50 px-2.5 py-0.5 font-semibold text-teal-700 ring-1 ring-[#cfe4de]">
-                  verified
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-slate-100">
-                <div className="h-2 w-[86%] rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-[#f4d35e]" />
-              </div>
-            </div>
+        {state.error && (
+          <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+            无法连接存证核验服务：{state.error}
           </div>
-        </div>
+        )}
       </section>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        {stats.map(({ label, value, icon, tone }) => (
-          <div key={label} className="rounded-2xl border border-[#dfe8e2] bg-[#fcfefd] p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-slate-500">{label}</p>
-                <p className="mt-1 text-3xl font-bold text-slate-900">{value}</p>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+        <Stat label="服务状态" value={serviceStatusLabels[data?.service.status || (state.loading ? "loading" : "offline")] || data?.service.status} />
+        <Stat label="项目空间" value={data?.workspaces.length ?? 0} />
+        <Stat label="文件" value={data?.assets.length ?? 0} />
+        <Stat label="已存证" value={preservedCount} />
+        <Stat label="待处理" value={attentionCount} tone={attentionCount > 0 ? "amber" : "emerald"} />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <section className="rounded-2xl border border-[#dfe8e2] bg-white shadow-sm">
+          <SectionHeader title="最近文件" subtitle="最新提交和存证状态" />
+          <div className="divide-y divide-[#e7eee9]">
+            {(data?.assets || []).slice(0, 6).map((asset) => {
+              const latest = asset.latest_version;
+              const meta = getOverviewFileStatusMeta(latest?.preservation_record?.verification_status || "pending");
+              return (
+                <button
+                  key={asset.asset_id}
+                  type="button"
+                  onClick={() => navigate(`/assets?asset_id=${asset.asset_id}`)}
+                  className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left hover:bg-emerald-50/60"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-900">{asset.title || asset.asset_id}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {displayAssetType(asset.asset_type)} · 最新版本 {latest ? `v${latest.version_no}` : "暂无"}
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${meta.badge}`}>{meta.label}</span>
+                </button>
+              );
+            })}
+            {!state.loading && data?.assets.length === 0 && <Empty text="暂无文件。请先在文件提交页上传需要存证的教学文件。" />}
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-[#dfe8e2] bg-white shadow-sm">
+          <SectionHeader title="项目空间与审计" subtitle="项目空间状态与审计记录完整性" />
+          <div className="space-y-4 p-5">
+            {(data?.workspaces || []).slice(0, 4).map((workspace) => (
+              <div key={workspace.workspace_id} className="rounded-xl border border-[#dfe8e2] bg-[#fbfdfb] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-900">{workspace.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">{workspace.workspace_id} · {displayAssetType(workspace.workspace_type)}</p>
+                  </div>
+                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                    {displayStatus(workspace.status)}
+                  </span>
+                </div>
               </div>
-              <span className={`grid h-9 w-9 place-items-center rounded-lg text-sm font-semibold ${tone}`}>
-                {icon}
-              </span>
+            ))}
+            <div className="rounded-xl border border-[#dfe8e2] bg-white p-4 text-sm">
+              <p className="font-semibold text-slate-900">审计校验链</p>
+              <p className="mt-2 text-slate-500">
+                完整性：{data?.audit?.valid ? "通过" : "未知"} · 已检查 {data?.audit?.checked_count ?? 0} 条记录
+              </p>
+              <p className="mt-2 break-all font-mono text-xs text-slate-500">
+                最新校验值：{displayValue(data?.audit?.latest_entry_hash)}
+              </p>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Recent records */}
-      <div className="rounded-2xl border border-[#dfe8e2] bg-[#fcfefd] shadow-sm">
-        <div className="flex items-center justify-between border-b border-[#dfe8e2] px-5 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">最近提交记录</h2>
-            <p className="mt-1 text-sm text-slate-400">点击记录进入对应核验页</p>
-          </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-medium text-slate-500">
-            {scenarios.length} records
-          </span>
-        </div>
-        <ul className="divide-y divide-[#e7eee9]">
-          {scenarios.map((s) => {
-            const meta = getStatusMeta(s.status);
-            return (
-            <li key={s.key} className="group flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-emerald-50/60">
-              <div>
-                <p className="text-base font-medium text-slate-800">{s.label}</p>
-                {s.failure_reason && (
-                  <p className="text-sm text-slate-400">{s.failure_reason}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className={`rounded-full px-3 py-1 text-sm font-medium ${meta.badge}`}>
-                  {meta.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/verify/${s.key}`)}
-                  className="rounded-lg border border-[#dfe8e2] bg-white px-3 py-1.5 text-sm font-medium text-slate-600 opacity-70 transition group-hover:opacity-100 hover:border-[#cfded4] hover:bg-emerald-50 hover:text-emerald-700 active:scale-[0.98]"
-                >
-                  查看详情
-                </button>
-              </div>
-            </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <CapabilityCard title="文件可信提交" text="选择教学文件后模拟摘要计算、资产版本创建和回执等待流程。" />
-        <CapabilityCard title="版本链路追踪" text="展示 v1 到 v2 的 previous_version_id、digest 和核验状态。" />
-        <CapabilityCard title="回执核验与 AI 解释" text="区分结构化证明来源和 AI 辅助说明，保留人工复核建议。" />
+        </section>
       </div>
     </div>
   );
 }
 
-function FlowItem({ index, title, text }) {
+function Stat({ label, value, tone = "emerald" }) {
+  const toneClass = tone === "amber" ? "text-amber-700 bg-amber-50" : "text-emerald-700 bg-emerald-50";
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-[#dfe8e2] bg-white/80 p-3">
-      <span className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-50 text-sm font-bold text-emerald-700">
-        {index}
-      </span>
-      <div>
-        <p className="text-sm font-semibold text-slate-900">{title}</p>
-        <p className="mt-0.5 text-xs text-slate-500">{text}</p>
-      </div>
+    <div className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
+      <p className="text-sm text-slate-500">{label}</p>
+      <p className={`mt-2 inline-flex rounded-lg px-3 py-1 text-2xl font-bold ${toneClass}`}>{value}</p>
     </div>
   );
 }
 
-function CapabilityCard({ title, text }) {
+function StatusPill({ label, value, active = false }) {
   return (
-    <div className="rounded-2xl border border-[#dfe8e2] bg-[#fcfefd] p-5 shadow-sm">
-      <div className="mb-4 h-1.5 w-10 rounded-full bg-gradient-to-r from-emerald-500 to-green-500" />
-      <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-500">{text}</p>
+    <span
+      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/75 px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm"
+    >
+      <span className={`h-2 w-2 rounded-full ${active ? "bg-sky-500" : "bg-slate-300"}`} />
+      <span className="text-slate-500">{label}</span>
+      <span>{value}</span>
+    </span>
+  );
+}
+
+function SectionHeader({ title, subtitle }) {
+  return (
+    <div className="border-b border-[#dfe8e2] px-5 py-4">
+      <h2 className="font-semibold text-slate-900">{title}</h2>
+      <p className="mt-1 text-sm text-slate-500">{subtitle}</p>
     </div>
   );
+}
+
+function Empty({ text }) {
+  return <div className="px-5 py-8 text-sm text-slate-400">{text}</div>;
+}
+
+function getOverviewFileStatusMeta(status) {
+  const meta = getStatusMeta(status);
+  if (status === "verified") {
+    return { ...meta, label: "已存证" };
+  }
+  return meta;
 }

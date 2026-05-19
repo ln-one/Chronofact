@@ -31,9 +31,18 @@ export default function Landing() {
               <p className="text-xs text-emerald-700/70">高校教学证据可信存证与智能核验平台</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-white/70 px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm backdrop-blur">
-            <span className="h-2 w-2 rounded-full bg-teal-500" />
-            存证服务在线
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/auth")}
+              className="rounded-full border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-5 py-2.5 text-sm font-bold text-emerald-900 shadow-md shadow-emerald-900/10 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:from-emerald-100 hover:to-emerald-50"
+            >
+              登录 / 注册
+            </button>
+            <div className="flex items-center gap-2 rounded-full border border-emerald-100 bg-white/70 px-4 py-2 text-xs font-medium text-emerald-700 shadow-sm backdrop-blur">
+              <span className="h-2 w-2 rounded-full bg-teal-500" />
+              存证服务在线
+            </div>
           </div>
         </header>
 
@@ -42,28 +51,24 @@ export default function Landing() {
             高校教学证据可信存证<br />与智能核验平台
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-            面向实验报告、作业和课程文件，提供文件提交、摘要固化、
+            面向实验报告、作业和课程文件，提供文件提交、数字指纹登记、
             版本追踪、可信核验与辅助解释等完整流程。
           </p>
 
           <button
             type="button"
-            onClick={startApp}
+            onClick={() => navigate("/auth")}
             disabled={starting}
             className="mt-7 inline-flex min-w-[320px] items-center justify-center gap-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-700 px-9 py-4 text-xl font-bold text-white shadow-2xl shadow-emerald-900/20 transition duration-200 hover:-translate-y-1 hover:from-emerald-400 hover:to-emerald-600 hover:shadow-emerald-900/25 active:scale-[0.98] disabled:cursor-wait disabled:opacity-80"
           >
             <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-xl text-emerald-600">
-              {starting ? (
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-200 border-t-emerald-600" />
-              ) : (
-                "→"
-              )}
+              →
             </span>
-            {starting ? "正在进入" : "开始使用"}
+            开始使用
           </button>
 
           <div className="mt-14 grid w-full max-w-3xl gap-5 md:grid-cols-3">
-            <Feature icon="▤" title="文件摘要固化" text="计算文件摘要，确保文件完整可信" />
+            <Feature icon="▤" title="数字指纹存证" text="登记文件指纹，便于后续核验一致性" />
             <Feature icon="⌁" title="版本链路追踪" text="记录版本变化，追踪文件演化过程" />
             <Feature icon="✓" title="可信核验解释" text="展示核验结果，支持 AI 辅助解释" />
           </div>

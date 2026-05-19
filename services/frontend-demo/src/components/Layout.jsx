@@ -1,41 +1,119 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { isLiveApiEnabled } from "../services/mockChronofactApi";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { chronofactApiBaseUrl } from "../services/chronofactApi";
+import { getCurrentSession, logoutIdentity, toDisplayUser } from "../services/limoraAuth";
 
 const navItems = [
   { to: "/dashboard", label: "概览", icon: "◈", end: true },
   { to: "/submit", label: "文件提交", icon: "↑" },
-  { to: "/assets", label: "资产库", icon: "▦" },
+  { to: "/assets", label: "文件库", icon: "▦" },
   { to: "/verify", label: "核验中心", icon: "✓" },
+  { to: "/ai", label: "AI 解释", icon: "※" },
   { to: "/reports", label: "报告导出", icon: "⎙" },
 ];
 
 const breadcrumbMap = {
   "/dashboard": "概览",
   "/submit": "文件提交",
-  "/assets": "资产库",
+  "/assets": "文件库",
   "/verify": "核验中心",
+  "/ai": "AI 解释",
   "/reports": "报告导出",
 };
 
 export default function Layout() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const crumb = breadcrumbMap[pathname] ?? "页面";
-  const liveApiEnabled = isLiveApiEnabled();
+  const [user, setUser] = useState(null);
+  const [authStatus, setAuthStatus] = useState("checking");
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setAuthStatus("checking");
+    getCurrentSession()
+      .then((payload) => {
+        if (!active) return;
+        setUser(toDisplayUser(payload));
+        setAuthStatus("authenticated");
+      })
+      .catch(() => {
+        if (!active) return;
+        setUser(null);
+        setAuthStatus("anonymous");
+      });
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
+
+  async function handleSignOut() {
+    try {
+      await logoutIdentity();
+    } finally {
+      setUser(null);
+      setAuthStatus("anonymous");
+      setAccountOpen(false);
+      navigate("/auth");
+    }
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#fbfdfb] font-sans text-slate-800">
       {/* Sidebar */}
       <aside className="flex h-screen w-72 flex-shrink-0 flex-col border-r border-[#d8e3dc] bg-[#f2faf5] text-slate-700 shadow-sm">
-        <div className="flex items-center gap-3 border-b border-[#d8e3dc] px-5 py-5">
-          <div className="relative grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 font-bold text-white text-sm shadow-md shadow-emerald-900/20">
+        <div className="relative border-b border-[#d8e3dc] px-5 py-5">
+          <button
+            type="button"
+            onClick={() => setAccountOpen((open) => !open)}
+            aria-expanded={accountOpen}
+            aria-label="打开账户菜单"
+            className="flex w-full items-center gap-3 rounded-xl text-left transition hover:bg-white/55 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+          >
+          <div className="relative grid h-10 w-10 flex-shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 font-bold text-white text-sm shadow-md shadow-emerald-900/20">
             <span>C</span>
             <span className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full border-2 border-[#f2faf5] bg-[#f4d35e]" />
             <span className="absolute bottom-1.5 right-1.5 h-1.5 w-4 rounded-full bg-[#f7e59a]/90" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-base font-semibold text-emerald-950">Chronofact</p>
             <p className="text-sm text-emerald-700/80">教学证据链系统</p>
           </div>
+            <span className={`text-sm text-emerald-700 transition ${accountOpen ? "rotate-180" : ""}`}>⌄</span>
+          </button>
+
+          {accountOpen && (
+            <div className="absolute left-5 top-[78px] z-20 w-[248px] rounded-2xl border border-[#dfe8e2] bg-white p-3 shadow-xl shadow-emerald-900/10">
+              <p className="px-2 text-xs font-medium text-slate-500">账户</p>
+              <p className="mt-1 truncate px-2 text-sm font-semibold text-emerald-950">
+                {authStatus === "checking" ? "正在检查身份" : user ? user.displayName : "未登录用户"}
+              </p>
+              <p className="mt-0.5 truncate px-2 text-xs text-slate-500">
+                {user ? `${user.role} · ${user.organization}` : "登录后显示个人身份"}
+              </p>
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  disabled
+                  className="flex w-full items-center justify-between rounded-lg border border-[#dfe8e2] bg-[#fbfdfb] px-3 py-2 text-sm font-semibold text-slate-500 disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  <span>设置</span>
+                  <span className="text-xs font-medium text-slate-400">暂未开放</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={user ? handleSignOut : () => {
+                    setAccountOpen(false);
+                    navigate("/auth");
+                  }}
+                  className="w-full rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 active:scale-[0.99]"
+                >
+                  {user ? "退出登录" : "登录 / 注册"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <nav className="min-h-0 flex-1 space-y-1 px-3 py-4">
           {navItems.map(({ to, label, icon, end }) => (
@@ -72,6 +150,15 @@ export default function Layout() {
           ))}
         </nav>
         <div className="flex-shrink-0 border-t border-[#dfe8e2] px-5 py-4">
+          <div className="mb-3 rounded-xl border border-[#dfe8e2] bg-white/80 p-3">
+            <p className="text-xs font-medium text-slate-500">当前身份</p>
+            <p className="mt-1 truncate text-sm font-semibold text-emerald-950">
+              {authStatus === "checking" ? "正在检查身份" : user ? user.displayName : "未登录用户"}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {user ? `${user.role} · ${user.organization}` : "登录后显示个人身份"}
+            </p>
+          </div>
           <div className="rounded-2xl border border-[#dfe8e2] bg-white/70 p-3 font-['Source_Han_Serif_SC','Noto_Serif_SC','SimSun',serif]">
             <p className="text-sm font-semibold text-emerald-800">存证核验服务</p>
             <p className="mt-1.5 whitespace-nowrap text-sm leading-6 text-slate-500">文件存证、回执核验与结果解释</p>
@@ -90,7 +177,7 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-medium text-teal-700">
             <span className="h-2 w-2 rounded-full bg-teal-500" />
-            {liveApiEnabled ? "后端实时模式" : "前端演示模式"}
+            服务：{chronofactApiBaseUrl.replace(/^https?:\/\//, "")}
           </div>
         </header>
 

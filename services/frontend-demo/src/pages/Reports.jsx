@@ -1,212 +1,208 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { getAiExplanation, getScenario, listScenarios } from "../services/mockChronofactApi";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { getVersionReport, getWorkspaceReport, listAssets, listWorkspaces } from "../services/chronofactApi";
 import { getStatusMeta } from "../lib/status";
-
-const exportHistory = [
-  { name: "实验报告 v1", type: "核验摘要 PDF", time: "2026-05-08 10:36", status: "成功" },
-  { name: "多版本追踪", type: "证据链报告", time: "2026-05-08 14:25", status: "成功" },
-  { name: "待回执提交", type: "核验摘要", time: "2026-05-08 15:12", status: "处理中" },
-];
-
-const reportSections = ["核验摘要", "文件基本信息", "哈希摘要", "时间戳", "回执结果", "AI 辅助建议"];
+import { displayDateTime, displayValue } from "../lib/display";
 
 export default function Reports() {
   const navigate = useNavigate();
-  const scenarios = listScenarios();
-  const [scenarioKey, setScenarioKey] = useState("normalSubmission");
-  const [generated, setGenerated] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const [assets, setAssets] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [targetType, setTargetType] = useState(params.get("workspace_id") ? "workspace" : "version");
+  const [versionId, setVersionId] = useState(params.get("version_id") || "");
+  const [workspaceId, setWorkspaceId] = useState(params.get("workspace_id") || "");
+  const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [reportData, setReportData] = useState(null);
+  const [error, setError] = useState("");
 
-  const selectedScenario = getScenario(scenarioKey);
-  const selectedAi = selectedScenario.ai_explanation;
-  const scenario = reportData?.scenario || selectedScenario;
-  const ai = reportData?.ai || selectedAi;
-  const status = getStatusMeta(scenario.verification_result.status);
-  const digestMatched = scenario.verification_result.digest_match;
+  useEffect(() => {
+    Promise.all([listAssets(), listWorkspaces()])
+      .then(([assetPayload, workspacePayload]) => {
+        const nextAssets = assetPayload.assets || [];
+        const nextWorkspaces = workspacePayload.workspaces || [];
+        setAssets(nextAssets);
+        setWorkspaces(nextWorkspaces);
+        if (!versionId && nextAssets[0]?.latest_version?.version_id) {
+          setVersionId(nextAssets[0].latest_version.version_id);
+        }
+        if (!workspaceId && nextWorkspaces[0]?.workspace_id) {
+          setWorkspaceId(nextWorkspaces[0].workspace_id);
+        }
+      })
+      .catch((caught) => setError(caught.message));
+  }, []);
 
-  async function generate() {
+  async function generateReport() {
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 600));
-    const nextScenario = getScenario(scenarioKey);
-    const nextAi = await getAiExplanation(scenarioKey);
-    setReportData({ scenario: nextScenario, ai: nextAi });
-    setGenerated(true);
-    setLoading(false);
+    setError("");
+    try {
+      if (targetType === "workspace") {
+        const payload = await getWorkspaceReport(workspaceId);
+        setReport({ type: "workspace", payload });
+        setParams({ workspace_id: workspaceId });
+      } else {
+        const payload = await getVersionReport(versionId);
+        setReport({ type: "version", payload });
+        setParams({ version_id: versionId });
+      }
+    } catch (caught) {
+      setError(caught.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function changeScenario(value) {
-    setScenarioKey(value);
-    setGenerated(false);
-    setReportData(null);
-  }
+  const verification = report?.payload?.verification_result;
+  const status = verification ? getStatusMeta(verification.status) : null;
+  const markdown = report?.payload?.report?.content || "";
 
   return (
-    <div className="space-y-6 text-[15px]">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-950">报告导出</h1>
-        <p className="mt-2 text-base text-slate-500">生成课程展示所需的核验摘要、证据来源与人工复核建议。</p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">报告导出</h1>
+          <p className="mt-1 text-sm text-slate-500">生成版本核验报告和项目空间汇总报告。</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/assets")}
+          className="rounded-lg border border-[#dfe8e2] bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          查看文件库
+        </button>
       </div>
 
-      <div className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="min-w-[280px] flex-1">
-            <label className="mb-2 block text-base font-semibold text-slate-700">选择记录</label>
-            <select
-              value={scenarioKey}
-              onChange={(e) => changeScenario(e.target.value)}
-              className="w-full rounded-xl border border-[#d7e2dc] bg-white px-4 py-3 text-base outline-none transition focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
-            >
-              {scenarios.map((s) => (
-                <option key={s.key} value={s.key}>{s.label}</option>
-              ))}
-            </select>
-          </div>
+      {error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>}
+
+      <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
+        <div className="mb-5 inline-flex rounded-xl border border-[#dfe8e2] bg-[#f6fbf8] p-1">
+          <ModeButton active={targetType === "version"} onClick={() => setTargetType("version")}>
+            版本核验报告
+          </ModeButton>
+          <ModeButton active={targetType === "workspace"} onClick={() => setTargetType("workspace")}>
+            项目空间报告
+          </ModeButton>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
+          {targetType === "version" ? (
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-700">选择版本</span>
+              <select
+                value={versionId}
+                onChange={(event) => setVersionId(event.target.value)}
+                className="mt-1.5 h-11 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-100"
+              >
+                {assets.map((asset) => (
+                  <option key={asset.asset_id} value={asset.latest_version?.version_id || ""}>
+                    {asset.title || asset.asset_id} · {asset.latest_version ? `v${asset.latest_version.version_no}` : "暂无版本"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label className="block">
+              <span className="text-sm font-semibold text-slate-700">选择项目空间</span>
+              <select
+                value={workspaceId}
+                onChange={(event) => setWorkspaceId(event.target.value)}
+                className="mt-1.5 h-11 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-100"
+              >
+                {workspaces.map((workspace) => (
+                  <option key={workspace.workspace_id} value={workspace.workspace_id}>
+                    {workspace.title} ({workspace.workspace_id})
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <button
             type="button"
-            onClick={generate}
-            disabled={loading}
-            className="rounded-xl bg-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-sm shadow-emerald-900/10 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-wait disabled:bg-slate-300"
+            onClick={generateReport}
+            disabled={loading || (targetType === "version" ? !versionId : !workspaceId)}
+            className="self-end rounded-lg bg-emerald-700 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-600 disabled:cursor-wait disabled:bg-slate-300"
           >
-            {loading ? "生成中..." : "生成核验摘要"}
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(`/verify/${scenarioKey}`)}
-            className="rounded-xl border border-[#d7e2dc] bg-white px-6 py-3 text-base font-semibold text-slate-700 transition hover:-translate-y-0.5 hover:bg-slate-50"
-          >
-            查看核验证据
+            {loading ? "生成中..." : "生成报告"}
           </button>
         </div>
-      </div>
+      </section>
 
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.25fr]">
-        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="text-xl font-bold text-slate-950">记录信息摘要</p>
-              <p className="mt-1 text-sm text-slate-500">选中记录后自动显示基础信息。</p>
+      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
+          <p className="font-semibold text-slate-900">报告信息</p>
+          {!report ? (
+            <p className="mt-4 text-sm text-slate-400">请选择目标并生成报告。</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <Info label="报告类型" value={report.type === "version" ? "版本核验报告" : "项目空间汇总报告"} />
+              <Info label="报告格式" value={report.payload.report.format === "markdown" ? "文本报告" : report.payload.report.format} />
+              <Info label="生成时间" value={displayDateTime(report.payload.report.generated_at)} />
+              {status && (
+                <div>
+                  <p className="mb-1 text-sm text-slate-500">核验状态</p>
+                  <span className={`rounded-full px-3 py-1 text-sm font-semibold ${status.badge}`}>{status.label}</span>
+                </div>
+              )}
+              {report.type === "version" && (
+                <>
+                  <Info label="版本编号" value={report.payload.evidence.asset_version.version_id} />
+                  <Info label="文件数字指纹" value={report.payload.evidence.preservation_record.digest} />
+                  <Info label="回执编号" value={report.payload.evidence.preservation_record.receipt_id} />
+                </>
+              )}
+              {report.type === "workspace" && (
+                <>
+                  <Info label="项目空间编号" value={report.payload.workspace.workspace_id} />
+                  <Info label="文件数量" value={String(report.payload.workspace.assets.length)} />
+                </>
+              )}
             </div>
-            <span className={`rounded-full px-3 py-1 text-sm font-semibold ${status.badge}`}>{status.label}</span>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Info label="文件名称" value={scenario.upload_record.filename} />
-            <Info label="文件类型" value={assetTypeLabel(scenario.asset_version.asset_type)} />
-            <Info label="提交时间" value={scenario.asset_version.timestamp} />
-            <Info label="当前版本" value={`v${scenario.asset_version.version_no}`} />
-            <Info label="摘要算法" value="SHA-256" />
-            <Info label="存证状态" value={scenario.verification_result.receipt_status === "available" ? "已生成回执" : "等待回执"} />
-            <Info label="核验结果" value={digestMatched === true ? "摘要一致" : digestMatched === false ? "摘要不一致" : "等待核验"} />
-            <Info label="上一版本" value={scenario.asset_version.previous_version_id || "无"} />
-          </div>
+          )}
         </section>
 
-        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
-          <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xl font-bold text-slate-950">报告预览</p>
-              <p className="mt-1 text-sm text-slate-500">展示即将导出的报告核心内容。</p>
-            </div>
-            <button
-              type="button"
-              disabled={!generated}
-              className="rounded-xl border border-[#d7e2dc] bg-white px-5 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-slate-400"
-            >
-              导出 PDF
-            </button>
+        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="font-semibold text-slate-900">报告内容预览</p>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+              {report ? "已生成" : "等待生成"}
+            </span>
           </div>
-          <div className="rounded-2xl border border-[#dfe8e2] bg-[#f8fcfa] p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-lg font-bold text-slate-950">{selectedScenario.label} 核验摘要</p>
-                <p className="mt-1 text-sm text-slate-500">{generated ? "已生成报告预览" : "点击生成后可导出正式摘要"}</p>
-              </div>
-              <span className={`rounded-full px-3 py-1 text-sm font-semibold ${status.badge}`}>{status.label}</span>
+          {markdown ? (
+            <pre className="max-h-[620px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#dfe8e2] bg-[#fbfdfb] p-4 text-sm leading-6 text-slate-800">
+              {markdown}
+            </pre>
+          ) : (
+            <div className="rounded-xl border border-dashed border-[#dfe8e2] p-8 text-sm text-slate-400">
+              这里会展示系统生成的版本核验报告或项目空间汇总报告。
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <Preview label="摘要哈希" value={`SHA-256: ${shortDigest(scenario.asset_version.sha256)}`} />
-              <Preview label="版本信息" value={`v${scenario.asset_version.version_no} / ${scenario.asset_version.timestamp}`} />
-              <Preview label="回执状态" value={scenario.verification_result.receipt_status === "available" ? "已生成" : "未完成"} />
-              <Preview label="链路状态" value={scenario.verification_result.trace_status === "available" ? "可追溯" : "待确认"} />
-            </div>
-            <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm leading-6 text-sky-900">
-              <strong>AI 复核建议：</strong>{ai.next_checks.join("；")}
-            </div>
-          </div>
+          )}
         </section>
       </div>
-
-      <div className="grid gap-5 xl:grid-cols-[0.95fr_1.25fr]">
-        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
-          <p className="text-xl font-bold text-slate-950">导出内容</p>
-          <p className="mt-1 text-sm text-slate-500">报告将包含以下核验材料。</p>
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            {reportSections.map((item) => (
-              <div key={item} className="rounded-xl border border-[#dfe8e2] bg-[#fbfdfb] px-4 py-3 text-base font-semibold text-slate-700">
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
-          <p className="text-xl font-bold text-slate-950">最近导出记录</p>
-          <div className="mt-5 overflow-hidden rounded-xl border border-[#dfe8e2]">
-            <div className="grid grid-cols-[1.1fr_1fr_1fr_0.6fr] bg-[#f8fcfa] px-4 py-3 text-sm font-semibold text-slate-500">
-              <span>记录名称</span>
-              <span>导出类型</span>
-              <span>导出时间</span>
-              <span>状态</span>
-            </div>
-            {exportHistory.map((item) => (
-              <div key={`${item.name}-${item.time}`} className="grid grid-cols-[1.1fr_1fr_1fr_0.6fr] border-t border-[#e5ede8] px-4 py-3 text-sm text-slate-700">
-                <span className="font-semibold text-slate-900">{item.name}</span>
-                <span>{item.type}</span>
-                <span>{item.time}</span>
-                <span className={item.status === "成功" ? "text-emerald-700" : "text-amber-700"}>{item.status}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      {generated && (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-          <strong>AI 边界声明：</strong>AI 只解释结构化证据，不生成证明，不把失败改写为成功。最终证明来源是摘要、回执、链路追踪和核验结果。
-        </section>
-      )}
     </div>
+  );
+}
+
+function ModeButton({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-10 rounded-lg px-4 text-sm font-semibold transition ${
+        active ? "bg-white text-emerald-800 shadow-sm" : "text-slate-500 hover:text-emerald-700"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
 function Info({ label, value }) {
   return (
-    <div className="rounded-xl border border-[#dfe8e2] bg-[#fbfdfb] p-4">
+    <div className="rounded-lg border border-[#dfe8e2] bg-[#fbfdfb] px-4 py-3">
       <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 break-all text-base font-semibold text-slate-900">{value}</p>
+      <p className="mt-1.5 break-all text-base text-slate-800">{displayValue(value)}</p>
     </div>
   );
-}
-
-function Preview({ label, value }) {
-  return (
-    <div className="rounded-xl bg-white px-4 py-3">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-1 break-all text-base font-semibold text-slate-900">{value}</p>
-    </div>
-  );
-}
-
-function shortDigest(value) {
-  if (!value || value.length <= 16) return value || "未生成";
-  return `${value.slice(0, 8)}...${value.slice(-6)}`;
-}
-
-function assetTypeLabel(type) {
-  const labels = {
-    lab_report: "实验报告",
-    assignment: "课程作业",
-  };
-  return labels[type] || "教学文件";
 }
