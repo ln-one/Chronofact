@@ -6,7 +6,7 @@ test("adapter contracts reject missing service methods at construction time", ()
   assert.throws(
     () =>
       assertChronofactAdapters({
-        limora: { resolveIdentity() {} },
+        limora: { resolveIdentity() {}, requirePermission() {} },
         dualweave: { storeUpload() {} },
         chronestia: { registerVersion() {} },
         ai: { explain() {} }
@@ -14,4 +14,3 @@ test("adapter contracts reject missing service methods at construction time", ()
     /chronestia adapter must implement verifyVersion/
   );
 });
-

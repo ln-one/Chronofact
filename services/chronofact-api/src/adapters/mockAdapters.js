@@ -19,6 +19,23 @@ export function createDemoLimoraAdapter() {
       }
 
       return { ...MOCK_CONTRACT.identity_context };
+    },
+
+    async requirePermission({ scenario } = {}) {
+      if (scenario === "permission_denied") {
+        throw new ChronofactError(
+          "permission_denied",
+          "Demo identity does not have the required Chronofact permission.",
+          403
+        );
+      }
+
+      return {
+        allowed: true,
+        requestedPermissions: [],
+        grantedPermissions: [],
+        missingPermissions: []
+      };
     }
   };
 }

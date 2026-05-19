@@ -1,6 +1,13 @@
-import { toContentBuffer, sha256Hex } from "./digest.js";
+import { normalizeSha256Hex, toContentBuffer, sha256Hex } from "./digest.js";
 import { ChronofactError } from "./errors.js";
 import { assertChronofactAdapters } from "./adapters/contracts.js";
+
+export const CHRONOFACT_EVIDENCE_PERMISSIONS = {
+  create: "chronofact.evidence.create",
+  read: "chronofact.evidence.read",
+  verify: "chronofact.evidence.verify",
+  reportExport: "chronofact.evidence.report.export"
+};
 
 export function createChronofactOrchestrator({ store, clients }) {
   clients = assertChronofactAdapters(clients);
@@ -136,6 +143,223 @@ export function createChronofactOrchestrator({ store, clients }) {
       preservation_record: preservationRecord,
       verification_result: verificationResult,
       ...ai
+    };
+  }
+
+  async function preserveEvidence({
+    organization_id,
+    filename,
+    asset_title,
+    asset_type = "generic_file",
+    sha256,
+    content,
+    requestHeaders,
+    scenario
+  } = {}) {
+    if (!organization_id) {
+      throw new ChronofactError("invalid_request", "organization_id is required.", 400);
+    }
+    if (!filename) {
+      throw new ChronofactError("invalid_request", "filename is required.", 400);
+    }
+
+    const identityContext = await clients.limora.resolveIdentity({ requestHeaders, scenario });
+    await clients.limora.requirePermission({
+      organizationId: organization_id,
+      permission: CHRONOFACT_EVIDENCE_PERMISSIONS.create,
+      requestHeaders,
+      scenario
+    });
+    store.ensureWorkspace({
+      workspaceId: organization_id,
+      title: organization_id,
+      ownerId: identityContext.user_id
+    });
+
+    const digest = digestFromEvidenceInput({ sha256, content });
+    const uploadRecord = {
+      upload_id: store.allocateUploadId(),
+      storage_ref: null,
+      filename,
+      sha256: digest,
+      status: "metadata_recorded",
+      size: contentSize(content)
+    };
+    store.saveUpload(uploadRecord);
+
+    const assetVersion = store.createVersion({
+      assetType: asset_type,
+      workspaceId: organization_id,
+      assetTitle: asset_title ?? filename,
+      uploadRecord,
+      sha256: digest,
+      submitterId: identityContext.user_id
+    });
+
+    const witnessRecord = await clients.chronestia.registerVersion({
+      assetVersion,
+      previousFactId: assetVersion.previous_fact_id,
+      scenario
+    });
+    const witnessedVersion = store.attachWitness(assetVersion.version_id, witnessRecord);
+    const verificationResult = await clients.chronestia.verifyVersion({
+      assetVersion: witnessedVersion,
+      scenario
+    });
+    const preservationRecord = store.createPreservationRecord({
+      assetVersion: witnessedVersion,
+      witnessRecord,
+      verificationResult
+    });
+
+    return {
+      status: preservationStatusFromVerification(verificationResult),
+      identity_context: identityContext,
+      proof_id: preservationRecord.preservation_id,
+      sha256: digest,
+      asset: evidenceAssetSummary(store.requireAsset(witnessedVersion.asset_id)),
+      version: evidenceVersionSummary(witnessedVersion, uploadRecord),
+      proof: proofSummary(witnessRecord, verificationResult),
+      preservation_record: preservationRecord
+    };
+  }
+
+  async function verifyEvidence({
+    organization_id,
+    sha256,
+    content,
+    proof_id,
+    version_id,
+    requestHeaders,
+    scenario
+  } = {}) {
+    if (!organization_id) {
+      throw new ChronofactError("invalid_request", "organization_id is required.", 400);
+    }
+
+    const identityContext = await clients.limora.resolveIdentity({ requestHeaders, scenario });
+    await clients.limora.requirePermission({
+      organizationId: organization_id,
+      permission: CHRONOFACT_EVIDENCE_PERMISSIONS.verify,
+      requestHeaders,
+      scenario
+    });
+
+    const digest = digestFromEvidenceInput({ sha256, content });
+    if (!store.getWorkspace(organization_id) && !proof_id && !version_id) {
+      return {
+        result: "not_preserved",
+        identity_context: identityContext,
+        sha256: digest,
+        matched: false,
+        matches: [],
+        proof: null
+      };
+    }
+    const target = resolveEvidenceTarget({ proof_id, version_id, organization_id });
+
+    if (target && target.assetVersion.sha256 !== digest) {
+      return {
+        result: "mismatch",
+        identity_context: identityContext,
+        sha256: digest,
+        matched: false,
+        matches: [],
+        target: evidenceMatchSummary(target.assetVersion, target.preservationRecord),
+        proof: {
+          status: "failed",
+          digest_match: false,
+          receipt_status: target.assetVersion.receipt_id ? "available" : "missing",
+          trace_status: target.assetVersion.fact_id ? "available" : "missing",
+          failure_reason: "digest_mismatch",
+          recorded_sha256: target.assetVersion.sha256,
+          submitted_sha256: digest
+        }
+      };
+    }
+
+    const matchingVersions = target
+      ? [target.assetVersion]
+      : store.findVersionsBySha256({ sha256: digest, workspaceId: organization_id });
+
+    if (matchingVersions.length === 0) {
+      return {
+        result: "not_preserved",
+        identity_context: identityContext,
+        sha256: digest,
+        matched: false,
+        matches: [],
+        proof: null
+      };
+    }
+
+    const matches = matchingVersions.map((version) => {
+      const preservationRecord = store.listPreservationRecords({ versionId: version.version_id })[0] ?? null;
+      return evidenceMatchSummary(version, preservationRecord);
+    });
+    const verifiedVersion = target?.assetVersion ?? matchingVersions[0];
+    const verificationResult = await clients.chronestia.verifyVersion({
+      assetVersion: verifiedVersion,
+      scenario
+    });
+
+    return {
+      result: evidenceVerificationResult(verificationResult),
+      identity_context: identityContext,
+      sha256: digest,
+      matched: true,
+      matches,
+      proof: verificationResult
+    };
+  }
+
+  async function listOrganizationEvidence({ organization_id, requestHeaders, scenario } = {}) {
+    if (!organization_id) {
+      throw new ChronofactError("invalid_request", "organization_id is required.", 400);
+    }
+    await clients.limora.resolveIdentity({ requestHeaders, scenario });
+    await clients.limora.requirePermission({
+      organizationId: organization_id,
+      permission: CHRONOFACT_EVIDENCE_PERMISSIONS.read,
+      requestHeaders,
+      scenario
+    });
+
+    if (!store.getWorkspace(organization_id)) {
+      return { evidence: [] };
+    }
+    const records = store.listPreservationRecords({ workspaceId: organization_id });
+    return {
+      evidence: records.map((record) => {
+        const version = store.requireVersion(record.version_id);
+        return evidenceMatchSummary(version, record);
+      })
+    };
+  }
+
+  async function findEvidenceByDigest({ organization_id, sha256, requestHeaders, scenario } = {}) {
+    if (!organization_id) {
+      throw new ChronofactError("invalid_request", "organization_id is required.", 400);
+    }
+    const digest = normalizeDigestOrThrow(sha256);
+    await clients.limora.resolveIdentity({ requestHeaders, scenario });
+    await clients.limora.requirePermission({
+      organizationId: organization_id,
+      permission: CHRONOFACT_EVIDENCE_PERMISSIONS.read,
+      requestHeaders,
+      scenario
+    });
+
+    if (!store.getWorkspace(organization_id)) {
+      return { sha256: digest, matches: [] };
+    }
+    const records = store.findPreservationRecordsBySha256({ sha256: digest, workspaceId: organization_id });
+    return {
+      sha256: digest,
+      matches: records.map((record) => {
+        const version = store.requireVersion(record.version_id);
+        return evidenceMatchSummary(version, record);
+      })
     };
   }
 
@@ -676,6 +900,32 @@ export function createChronofactOrchestrator({ store, clients }) {
     ].join("\n");
   }
 
+  function resolveEvidenceTarget({ proof_id, version_id, organization_id }) {
+    if (!proof_id && !version_id) {
+      return null;
+    }
+
+    const preservationRecord = proof_id
+      ? store.requirePreservationRecord(proof_id)
+      : store.listPreservationRecords({ versionId: version_id })[0] ?? null;
+    const assetVersion = version_id
+      ? store.requireVersion(version_id)
+      : store.requireVersion(preservationRecord.version_id);
+
+    if (assetVersion.workspace_id !== organization_id) {
+      throw new ChronofactError(
+        "evidence_not_found",
+        "Evidence was not found in the requested organization.",
+        404
+      );
+    }
+
+    return {
+      assetVersion,
+      preservationRecord: preservationRecord ?? store.listPreservationRecords({ versionId: assetVersion.version_id })[0] ?? null
+    };
+  }
+
   async function explainSafely({ verificationResult, assetVersion, versionHistory = [], scenario }) {
     try {
       return {
@@ -709,6 +959,10 @@ export function createChronofactOrchestrator({ store, clients }) {
     describeWorkspaceOverview,
     submit,
     createVersion,
+    preserveEvidence,
+    verifyEvidence,
+    listOrganizationEvidence,
+    findEvidenceByDigest,
     verify,
     listAssets: (filters) => store.listAssets(filters),
     exportWorkspaceReport,
@@ -724,5 +978,97 @@ export function createChronofactOrchestrator({ store, clients }) {
     explainTrace,
     explainRisk,
     describeAsset: (assetId) => store.describeAsset(assetId)
+  };
+}
+
+function digestFromEvidenceInput({ sha256, content }) {
+  if (sha256) {
+    return normalizeDigestOrThrow(sha256);
+  }
+  if (content !== undefined) {
+    return sha256Hex(toContentBuffer(content));
+  }
+  throw new ChronofactError(
+    "invalid_request",
+    "sha256 or content_text/content_base64/content is required.",
+    400
+  );
+}
+
+function normalizeDigestOrThrow(sha256) {
+  try {
+    return normalizeSha256Hex(sha256);
+  } catch (error) {
+    throw new ChronofactError("invalid_sha256", error.message, 400);
+  }
+}
+
+function contentSize(content) {
+  if (content === undefined) return null;
+  return toContentBuffer(content).length;
+}
+
+function preservationStatusFromVerification(verificationResult) {
+  if (verificationResult.status === "verified") return "preserved";
+  if (verificationResult.status === "pending") return "pending";
+  return "failed";
+}
+
+function evidenceVerificationResult(verificationResult) {
+  if (verificationResult.status === "verified") return "preserved";
+  if (verificationResult.status === "pending") return "pending";
+  if (verificationResult.failure_reason === "chain_unavailable") return "proof_unavailable";
+  return "proof_unavailable";
+}
+
+function evidenceAssetSummary(asset) {
+  return {
+    asset_id: asset.asset_id,
+    organization_id: asset.workspace_id,
+    title: asset.title,
+    asset_type: asset.asset_type,
+    created_at: asset.created_at
+  };
+}
+
+function evidenceVersionSummary(version, uploadRecord = null) {
+  return {
+    version_id: version.version_id,
+    version_no: version.version_no,
+    filename: uploadRecord?.filename ?? version.filename,
+    size: uploadRecord?.size ?? version.size ?? null,
+    sha256: version.sha256,
+    created_at: version.created_at,
+    submitted_by: version.submitter_id
+  };
+}
+
+function proofSummary(witnessRecord, verificationResult) {
+  return {
+    provider: witnessRecord.provider ?? "chronestia",
+    fact_id: witnessRecord.fact_id,
+    receipt_id: witnessRecord.receipt_id,
+    anchor_status: witnessRecord.anchor_status,
+    transaction_hash: witnessRecord.tx_hash ?? null,
+    receipt_status: verificationResult.receipt_status,
+    trace_status: verificationResult.trace_status,
+    verification_status: verificationResult.status,
+    failure_reason: verificationResult.failure_reason ?? null
+  };
+}
+
+function evidenceMatchSummary(version, preservationRecord) {
+  return {
+    proof_id: preservationRecord?.preservation_id ?? null,
+    organization_id: version.workspace_id,
+    asset_id: version.asset_id,
+    version_id: version.version_id,
+    version_no: version.version_no,
+    filename: version.filename,
+    sha256: version.sha256,
+    created_at: version.created_at,
+    submitted_by: version.submitter_id,
+    receipt_status: preservationRecord?.verification_status ?? null,
+    anchor_status: preservationRecord?.anchor_status ?? null
   };
 }

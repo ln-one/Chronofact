@@ -117,6 +117,33 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
       return workspace;
     },
 
+    ensureWorkspace({ workspaceId, title = null, ownerId = null, workspaceType = "organization" }) {
+      const existing = workspaces.get(workspaceId);
+      if (existing) {
+        return existing;
+      }
+      const workspace = {
+        workspace_id: workspaceId,
+        title: title ?? workspaceId,
+        workspace_type: workspaceType,
+        description: "Limora organization evidence scope.",
+        status: "active",
+        owner_id: ownerId,
+        created_at: clock().toISOString(),
+        asset_ids: []
+      };
+      workspaces.set(workspaceId, workspace);
+      this.appendAudit({
+        workspaceId,
+        actorId: ownerId,
+        action: "workspace_created",
+        target_type: "workspace",
+        target_id: workspaceId,
+        summary: `Workspace ${workspace.title} was created.`
+      });
+      return workspace;
+    },
+
     allocateUploadId() {
       return nextId("upl", uploadCounter++);
     },
@@ -263,6 +290,8 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         version_no: versionNo,
         previous_version_id: previousVersion?.version_id ?? null,
         sha256,
+        filename: uploadRecord.filename,
+        size: uploadRecord.size ?? null,
         submitter_id: submitterId,
         upload_id: uploadRecord.upload_id,
         storage_ref: uploadRecord.storage_ref,
@@ -311,6 +340,31 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         );
       }
       return record;
+    },
+
+    findVersionsBySha256({ sha256, workspaceId } = {}) {
+      if (workspaceId) {
+        this.requireWorkspace(workspaceId);
+      }
+      return Array.from(versions.values()).filter((version) => {
+        if (version.sha256 !== sha256) return false;
+        if (workspaceId && version.workspace_id !== workspaceId) return false;
+        return true;
+      });
+    },
+
+    findPreservationRecordsBySha256({ sha256, workspaceId } = {}) {
+      if (workspaceId) {
+        this.requireWorkspace(workspaceId);
+      }
+      return Array.from(preservationRecords.values()).filter((record) => {
+        if (record.digest !== sha256) return false;
+        if (workspaceId) {
+          const asset = assets.get(record.asset_id);
+          if (asset?.workspace_id !== workspaceId) return false;
+        }
+        return true;
+      });
     },
 
     createPreservationRecord({ assetVersion, witnessRecord, verificationResult }) {
