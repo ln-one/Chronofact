@@ -2,8 +2,8 @@ import { useRef, useState, type DragEvent } from 'react'
 import {
   AlertTriangle,
   Blocks,
-  ChevronDown,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Hash,
   Loader2,
@@ -140,7 +140,7 @@ export function EvidenceConsole() {
   return (
     <ScrollArea className='h-full min-h-0 w-full overflow-x-hidden'>
       <div className='min-w-0 overflow-x-hidden p-5 pb-24'>
-        <p className='mb-3 text-xs font-semibold tracking-widest text-muted-foreground/50 uppercase'>
+        <p className='mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground/50'>
           存证模块
         </p>
         <p className='mb-5 text-xs leading-5 text-muted-foreground/60'>
@@ -225,12 +225,12 @@ export function EvidenceConsole() {
                       <Upload className='h-5 w-5 text-blue-500/65 dark:text-blue-300/65' />
                     )}
                   </div>
-                  <p className='max-w-full text-sm break-words text-muted-foreground/80'>
+                  <p className='max-w-full break-words text-sm text-muted-foreground/80'>
                     {selectedFile
                       ? selectedFile.name
                       : '点击选择文件，或拖拽文件到这里'}
                   </p>
-                  <p className='mt-1 max-w-full text-xs break-words text-muted-foreground/45'>
+                  <p className='mt-1 max-w-full break-words text-xs text-muted-foreground/45'>
                     {selectedFile
                       ? `${formatBytes(selectedFile.size)} · ${selectedFile.type}`
                       : '选择后会立即计算 SHA-256 指纹'}
@@ -365,7 +365,7 @@ function StatusRow({
     <div className='grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3'>
       <span>{label}</span>
       <span
-        className={`min-w-0 text-right break-all ${monospace ? 'font-mono' : ''}`}
+        className={`min-w-0 break-all text-right ${monospace ? 'font-mono' : ''}`}
       >
         {value}
       </span>

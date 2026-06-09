@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import {
-  ThreadPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  ThreadPrimitive,
   type TextMessagePartComponent,
 } from '@assistant-ui/react'
 import {
-  ArrowDown,
   AlertTriangle,
+  ArrowDown,
   ChevronRight,
   FileText,
   Fingerprint,
@@ -46,7 +46,7 @@ export function AgentChatPanel() {
         </div>
       </ThreadPrimitive.Viewport>
 
-      {/* 滚动到底 */}
+      {/* 滚动到底部 */}
       <ThreadPrimitive.ScrollToBottom asChild>
         <Button
           variant='outline'
@@ -102,7 +102,7 @@ export function AgentChatPanel() {
   )
 }
 
-/* ── 用户消息 ── */
+/* 用户消息 */
 
 function UserMessage() {
   return (
@@ -114,7 +114,7 @@ function UserMessage() {
   )
 }
 
-/* ── 助手消息 ── */
+/* 助手消息 */
 
 function AssistantMessage() {
   return (
@@ -134,7 +134,7 @@ function AssistantMessage() {
   )
 }
 
-/* ── 欢迎页 ── */
+/* 欢迎页 */
 
 const quickActions = [
   {
@@ -318,7 +318,8 @@ const agentTools = [
     name: 'chronofact.get_trace',
     label: '版本链路',
     description: '追踪资产版本历史',
-    prompt: '查询当前资产的版本链路，说明最新版本和 previous version 的关系。',
+    prompt:
+      '查询当前资产的版本链路，说明最新版本和 previous version 的关系。',
     icon: GitBranch,
     iconClassName:
       'bg-violet-50 text-violet-600/75 dark:bg-violet-950/30 dark:text-violet-300/80',
@@ -353,7 +354,7 @@ function WelcomeScreen() {
         AI 驱动的证据治理智能体
       </p>
       <p className='mb-10 max-w-md text-center text-sm leading-relaxed text-muted-foreground/60'>
-        查询存证记录、核验文件完整性、追踪版本链路、发现异常并生成报告。所有结论均标注证据来源。
+        查询存证记录、核验文件完整性、追踪版本链路、发现异常并生成报告。所有结论均标注证明来源。
       </p>
 
       <div className='grid w-full max-w-xl grid-cols-2 gap-2.5 sm:grid-cols-3'>

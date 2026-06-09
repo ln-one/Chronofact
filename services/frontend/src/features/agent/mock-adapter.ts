@@ -5,7 +5,7 @@ import type {
 
 /**
  * Mock 存证工具调用数据
- * 模拟 Agent 调用 Chronofact 存证系统的工具并返回结果
+ * 模拟 Agent 调用 Chronofact 存证系统工具并返回结果
  */
 
 const TOOL_RESPONSES: Record<string, { result: unknown; text: string }> = {
@@ -17,7 +17,7 @@ const TOOL_RESPONSES: Record<string, { result: unknown; text: string }> = {
           preservation_id: 'prv_001',
           asset_id: 'asset_001',
           version_id: 'ver_001',
-          sha256: 'a1b2c3d4e5f6...（SHA-256）',
+          sha256: 'a1b2c3d4e5f6... (SHA-256)',
           status: 'verified',
           anchor_status: 'recorded',
           created_at: '2026-06-01T10:30:00Z',
@@ -26,7 +26,7 @@ const TOOL_RESPONSES: Record<string, { result: unknown; text: string }> = {
           preservation_id: 'prv_002',
           asset_id: 'asset_002',
           version_id: 'ver_003',
-          sha256: 'f6e5d4c3b2a1...（SHA-256）',
+          sha256: 'f6e5d4c3b2a1... (SHA-256)',
           status: 'pending',
           anchor_status: 'pending',
           created_at: '2026-06-05T14:20:00Z',
@@ -35,7 +35,7 @@ const TOOL_RESPONSES: Record<string, { result: unknown; text: string }> = {
           preservation_id: 'prv_003',
           asset_id: 'asset_003',
           version_id: 'ver_005',
-          sha256: '1a2b3c4d5e6f...（SHA-256）',
+          sha256: '1a2b3c4d5e6f... (SHA-256)',
           status: 'failed',
           anchor_status: 'missing',
           failure_reason: 'proof_missing',
@@ -103,10 +103,10 @@ const TOOL_RESPONSES: Record<string, { result: unknown; text: string }> = {
     result: {
       report_id: 'rpt_001',
       format: 'markdown',
-      title: '核验摘要报告 — asset_001',
+      title: '核验摘要报告 - asset_001',
       generated_at: '2026-06-08T15:00:00Z',
       content_preview:
-        '# 核验摘要报告\n\n## 资产信息\n- 资产ID: asset_001\n- 版本: v2\n- 状态: 已核验\n\n## 证明来源\n- SHA-256 摘要匹配 ✓\n- 见证回执可用 ✓\n- 链上锚定确认 ✓',
+        '# 核验摘要报告\n\n## 资产信息\n- 资产ID: asset_001\n- 版本: v2\n- 状态: 已核验\n\n## 证明来源\n- SHA-256 摘要匹配\n- 见证回执可用\n- 链上锚定确认',
     },
   },
 }
@@ -125,7 +125,7 @@ function matchToolCall(userMessage: string): {
     lower.includes('记录') ||
     lower.includes('列出') ||
     lower.includes('proof missing') ||
-    lower.includes('哪些还没有')
+    lower.includes('哪些还没')
   ) {
     return {
       toolName: 'chronofact.list_evidence',
@@ -184,13 +184,13 @@ function matchToolCall(userMessage: string): {
 }
 
 /**
- * 构造工具调用 content part（满足 ToolCallMessagePart 类型要求）
+ * 构造工具调用 content part，满足 ToolCallMessagePart 类型要求
  */
 function makeToolCallPart(
   toolCallId: string,
   toolName: string,
   args: Record<string, string>,
-  result?: unknown,
+  result?: unknown
 ) {
   return {
     type: 'tool-call' as const,
@@ -204,7 +204,7 @@ function makeToolCallPart(
 
 /**
  * Mock ChatModelAdapter
- * 模拟 Agent 接收用户消息 → 调用存证工具 → 返回结果
+ * 模拟 Agent 接收用户消息 -> 调用存证工具 -> 返回结果
  */
 export const mockChatModelAdapter: ChatModelAdapter = {
   async *run({ messages }): AsyncGenerator<ChatModelRunResult, void> {
@@ -236,14 +236,14 @@ export const mockChatModelAdapter: ChatModelAdapter = {
       // 模拟工具执行延迟
       await new Promise((r) => setTimeout(r, 800))
 
-      // 返回工具结果 + 总结文本
+      // 返回工具结果和总结文本
       yield {
         content: [
           makeToolCallPart(
             toolCallId,
             toolCall.toolName,
             toolCall.args,
-            toolData.result,
+            toolData.result
           ),
           {
             type: 'text' as const,
@@ -257,7 +257,8 @@ export const mockChatModelAdapter: ChatModelAdapter = {
         content: [
           {
             type: 'text' as const,
-            text: `你好！我是 Chronofact 证据治理助手。你可以问我：\n\n- "这个文件有没有被存证？"\n- "为什么这次校验失败？"\n- "这批材料里哪些还没有链上确认？"\n- "哪个版本是最新的？"\n- "帮我生成一份复核报告"\n\n我会调用存证系统的工具来回答你。`,
+            text:
+              '你好，我是 Chronofact 证据治理助手。你可以问我：\n\n- "这个文件有没有被存证？"\n- "为什么这次校验失败？"\n- "这批材料里哪些还没有链上确认？"\n- "哪个版本是最新的？"\n- "帮我生成一份复核报告"\n\n我会调用存证系统工具来回答你。',
           },
         ],
       }

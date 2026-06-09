@@ -1,14 +1,16 @@
 import type {
   RemoteThreadListAdapter,
-  ThreadMessage,
   TextMessagePart,
+  ThreadMessage,
 } from '@assistant-ui/react'
+import { getCurrentAgentWorkspaceId } from './workspace-context'
 
 type StoredThread = {
   remoteId: string
   status: 'regular' | 'archived'
   title?: string
   pinned?: boolean
+  workspaceId?: string
 }
 
 const STORAGE_KEY = 'chronofact:agent:threads'
@@ -55,8 +57,8 @@ function extractFirstUserText(messages: readonly ThreadMessage[]) {
 function compactTitle(text: string) {
   const normalized = text
     .replace(/\s+/g, '')
-    .replace(/[，。！？、；：,.!?;:"“”'‘’()[\]{}<>《》]/g, '')
-    .replace(/^(请|麻烦|帮我|帮忙|我想|我想问|请问|能不能|可以|给我)/, '')
+    .replace(/[，。！？、；,.!?;:"'()[\]{}<>《》]/g, '')
+    .replace(/^(请问|麻烦|帮我|帮忙|我想|我想问|能不能|可不可以|给我)/, '')
 
   if (!normalized) return '新对话'
 
@@ -100,8 +102,12 @@ function createTitleStream(title: string) {
 
 export const chronofactThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
+    const currentWorkspaceId = getCurrentAgentWorkspaceId()
     return {
       threads: [...loadThreads()]
+        .filter((thread) =>
+          currentWorkspaceId ? thread.workspaceId === currentWorkspaceId : true
+        )
         .sort((a, b) => Number(b.pinned) - Number(a.pinned))
         .map((thread) => ({
           remoteId: thread.remoteId,
@@ -114,7 +120,14 @@ export const chronofactThreadListAdapter: RemoteThreadListAdapter = {
   async initialize(threadId: string) {
     const threads = loadThreads()
     if (!threads.some((thread) => thread.remoteId === threadId)) {
-      saveThreads([{ remoteId: threadId, status: 'regular' }, ...threads])
+      saveThreads([
+        {
+          remoteId: threadId,
+          status: 'regular',
+          workspaceId: getCurrentAgentWorkspaceId(),
+        },
+        ...threads,
+      ])
     }
 
     return { remoteId: threadId, externalId: undefined }

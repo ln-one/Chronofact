@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 import {
-  ThreadListPrimitive,
   ThreadListItemPrimitive,
+  ThreadListPrimitive,
   useAuiState,
 } from '@assistant-ui/react'
 import {
-  Plus,
   MessageSquare,
-  Settings,
   Moon,
-  Sun,
-  Search,
   MoreHorizontal,
-  Trash2,
   Pin,
+  Plus,
+  Search,
+  Settings,
+  Sun,
+  Trash2,
 } from 'lucide-react'
 import { useTheme } from '@/context/theme-provider'
 import { Button } from '@/components/ui/button'
@@ -58,7 +58,7 @@ export function AgentThreadList() {
         </ThreadListPrimitive.New>
       </div>
 
-      {/* 搜索栏 */}
+      {/* 搜索框 */}
       <div className='px-6 pb-5'>
         {searchOpen ? (
           <input
@@ -70,6 +70,7 @@ export function AgentThreadList() {
           />
         ) : (
           <button
+            type='button'
             onClick={() => setSearchOpen(true)}
             className='flex h-10 w-full items-center gap-3 rounded-lg px-2 text-sm text-muted-foreground transition-colors hover:bg-accent'
           >

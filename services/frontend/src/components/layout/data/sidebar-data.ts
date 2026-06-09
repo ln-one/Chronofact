@@ -5,11 +5,11 @@ import {
   FolderOpen,
   Folders,
   LayoutDashboard,
+  Palette,
   Settings,
   ShieldCheck,
   Upload,
   UserCog,
-  Palette,
 } from 'lucide-react'
 import { type SidebarData } from '../types'
 
@@ -32,7 +32,7 @@ export const sidebarData: SidebarData = {
       items: [
         {
           title: '概览',
-          url: '/',
+          url: '/overview',
           icon: LayoutDashboard,
         },
         {
