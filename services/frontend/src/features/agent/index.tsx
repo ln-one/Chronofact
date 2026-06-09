@@ -1,57 +1,39 @@
 import {
   AssistantRuntimeProvider,
-  useRemoteThreadListRuntime,
   useLocalRuntime,
+  useRemoteThreadListRuntime,
 } from '@assistant-ui/react'
+import { AgentChatPanel } from './components/agent-chat-panel'
+import { AgentThreadList } from './components/agent-thread-list'
+import { EvidenceConsole } from './components/evidence-console'
 import { mockChatModelAdapter } from './mock-adapter'
 import { chronofactThreadListAdapter } from './thread-list-adapter'
-import { AgentThreadList } from './components/agent-thread-list'
-import { AgentChatPanel } from './components/agent-chat-panel'
-import { EvidenceConsole } from './components/evidence-console'
-import {
-  ListEvidenceToolUI,
-  VerifyReceiptToolUI,
-  GetTraceToolUI,
-  FindDigestToolUI,
-  ExportReportToolUI,
-} from './tool-uis'
 
-function useChronofactThreadRuntime() {
-  return useLocalRuntime(mockChatModelAdapter)
-}
-
-export default function AgentWorkspace() {
+function AgentWorkspaceContent() {
   const runtime = useRemoteThreadListRuntime({
     adapter: chronofactThreadListAdapter,
-    runtimeHook: useChronofactThreadRuntime,
+    runtimeHook: () => useLocalRuntime(mockChatModelAdapter),
   })
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ListEvidenceToolUI />
-      <VerifyReceiptToolUI />
-      <GetTraceToolUI />
-      <FindDigestToolUI />
-      <ExportReportToolUI />
+      <div className='flex h-screen overflow-hidden bg-background text-foreground'>
+        <aside className='hidden h-full w-[320px] shrink-0 border-r bg-card lg:block'>
+          <AgentThreadList />
+        </aside>
 
-      <div className='h-svh w-full'>
-        <div className='grid h-full w-full grid-cols-[18rem_minmax(42rem,1fr)_minmax(0,24rem)] overflow-hidden'>
-          {/* 左栏：对话列表 */}
-          <div className='h-full min-h-0 min-w-0 overflow-hidden border-r bg-muted/30'>
-            <AgentThreadList />
-          </div>
+        <main className='min-w-0 flex-1'>
+          <AgentChatPanel />
+        </main>
 
-          {/* 中栏：对话区 */}
-          <div className='relative h-full min-h-0 min-w-0 overflow-hidden bg-background'>
-            <AgentChatPanel />
-          </div>
-
-          {/* 右栏：存证控制台 */}
-          <div className='h-full min-h-0 min-w-0 overflow-hidden border-l bg-muted/20'>
-            <EvidenceConsole />
-          </div>
-        </div>
+        <aside className='hidden h-full w-[360px] shrink-0 border-l bg-card xl:block'>
+          <EvidenceConsole />
+        </aside>
       </div>
     </AssistantRuntimeProvider>
   )
+}
+
+export default function AgentWorkspace() {
+  return <AgentWorkspaceContent />
 }
