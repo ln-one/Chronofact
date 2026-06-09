@@ -2,6 +2,7 @@ import { useDropzone } from 'react-dropzone'
 import {
   AlertTriangle,
   Blocks,
+  ChevronDown,
   CheckCircle2,
   FileCheck,
   Loader2,
@@ -19,10 +20,12 @@ import type {
   AgentFileContext,
   AgentToolCall,
 } from '../agent-api'
+import type { LimoraOrganization } from '@/features/auth/limora-api'
 import { getAgentApiBaseUrl } from '../agent-api'
 
 export function EvidenceConsole({
   detail,
+  organization,
   selectedFileId,
   busy,
   pendingAction,
@@ -31,6 +34,7 @@ export function EvidenceConsole({
   onConfirmPreserve,
 }: {
   detail: AgentConversationDetail | null
+  organization: LimoraOrganization | null
   selectedFileId: string | null
   busy: boolean
   pendingAction: AgentActionRequired | null
@@ -73,9 +77,9 @@ export function EvidenceConsole({
                 <Blocks className='h-4 w-4 text-emerald-600/75 dark:text-emerald-300/70' />
               </div>
               <div className='min-w-0'>
-                <p className='truncate text-sm font-medium'>Chronofact 演示空间</p>
+                <p className='truncate text-sm font-medium'>{organization?.name ?? 'Chronofact 演示空间'}</p>
                 <p className='truncate font-mono text-xs text-muted-foreground/50'>
-                  org_001
+                  {organization?.id ?? '未选择空间'}
                 </p>
               </div>
             </div>
@@ -131,18 +135,49 @@ export function EvidenceConsole({
         <div className='my-5'>
           <p className='mb-2 text-xs font-medium text-muted-foreground'>当前文件</p>
           {selectedFile ? (
-            <div className='rounded-xl border bg-background/60 p-4'>
-              <div className='mb-3 flex items-center gap-2'>
-                <FileCheck className='h-4 w-4 text-muted-foreground' />
-                <p className='min-w-0 truncate text-sm font-medium'>{selectedFile.filename}</p>
+            <div className='min-w-0 overflow-hidden rounded-xl border bg-background/60 p-4'>
+              <div className='mb-3 flex min-w-0 items-start gap-2'>
+                <FileCheck className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground' />
+                <div className='min-w-0 flex-1'>
+                  <p className='truncate text-sm font-medium' title={selectedFile.filename}>
+                    {compactFilename(selectedFile.filename)}
+                  </p>
+                  <p className='mt-1 font-mono text-xs text-muted-foreground/55'>
+                    {shortSha(selectedFile.sha256)}
+                  </p>
+                </div>
               </div>
-              <div className='min-w-0 space-y-2 text-xs text-muted-foreground/70'>
-                <StatusRow label='文件ID' value={selectedFile.file_id} monospace />
-                <StatusRow label='大小' value={formatBytes(selectedFile.size)} />
-                <StatusRow label='SHA-256' value={selectedFile.sha256} monospace />
-                <StatusRow label='proof' value={selectedFile.proof_id ?? proofSnapshot?.proof_id ?? '尚未存证'} monospace />
-                <StatusRow label='anchor' value={anchorStatus(proofSnapshot)} />
+
+              <div className='mb-3 flex min-w-0 flex-wrap gap-2 text-xs'>
+                <Badge variant='secondary' className='max-w-full font-normal'>
+                  {formatBytes(selectedFile.size)}
+                </Badge>
+                <Badge variant='outline' className='max-w-full font-normal'>
+                  {fileVersionLabel(selectedFile)}
+                </Badge>
+                <Badge variant='outline' className='max-w-full font-normal'>
+                  {proofLabel(selectedFile, proofSnapshot)}
+                </Badge>
               </div>
+
+              <details className='group rounded-lg border bg-muted/20 px-3 py-2'>
+                <summary className='flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-medium text-muted-foreground'>
+                  <span>展开详细信息</span>
+                  <ChevronDown className='h-4 w-4 shrink-0 transition group-open:rotate-180' />
+                </summary>
+                <div className='mt-3 min-w-0 space-y-2 text-xs text-muted-foreground/70'>
+                  <StatusRow label='文件ID' value={selectedFile.file_id} monospace />
+                  <StatusRow label='文件名' value={selectedFile.filename} />
+                  <StatusRow label='文档' value={selectedFile.document?.display_name ?? '未归档'} />
+                  <StatusRow label='版本' value={fileVersionLabel(selectedFile)} />
+                  <StatusRow label='大小' value={formatBytes(selectedFile.size)} />
+                  <StatusRow label='SHA-256' value={selectedFile.sha256} monospace />
+                  <StatusRow label='proof' value={proofLabel(selectedFile, proofSnapshot)} monospace />
+                  <StatusRow label='asset' value={selectedFile.version?.asset_id ?? '无'} monospace />
+                  <StatusRow label='anchor' value={anchorStatus(proofSnapshot)} />
+                </div>
+              </details>
+
               {pendingAction?.file_id === selectedFile.file_id && (
                 <Button
                   type='button'
@@ -151,7 +186,7 @@ export function EvidenceConsole({
                   disabled={busy}
                 >
                   {busy ? <Loader2 className='mr-2 h-4 w-4 animate-spin' /> : <ShieldCheck className='mr-2 h-4 w-4' />}
-                  确认存证
+                  {pendingAction.label}
                 </Button>
               )}
             </div>
@@ -169,19 +204,34 @@ export function EvidenceConsole({
               <p className='mb-2 text-xs font-medium text-muted-foreground'>本会话文件</p>
               <div className='space-y-2'>
                 {detail.files.map((file) => (
-                  <button
+                  <details
                     key={file.file_id}
-                    type='button'
-                    onClick={() => onSelectFile(file.file_id)}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition hover:bg-accent ${
+                    className={`group min-w-0 overflow-hidden rounded-xl border px-3 py-2 text-left text-sm transition hover:bg-accent ${
                       selectedFile?.file_id === file.file_id ? 'bg-accent' : 'bg-background/60'
                     }`}
                   >
-                    <span className='block truncate font-medium'>{file.filename}</span>
-                    <span className='mt-1 block break-all font-mono text-xs text-muted-foreground/55'>
-                      {shortSha(file.sha256)}
-                    </span>
-                  </button>
+                    <summary
+                      className='flex cursor-pointer list-none items-start gap-2'
+                      onClick={() => onSelectFile(file.file_id)}
+                    >
+                      <span className='min-w-0 flex-1'>
+                        <span className='block truncate font-medium' title={file.filename}>
+                          {compactFilename(file.filename)}
+                        </span>
+                        <span className='mt-1 block truncate font-mono text-xs text-muted-foreground/55'>
+                          {shortSha(file.sha256)}
+                        </span>
+                      </span>
+                      <ChevronDown className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/50 transition group-open:rotate-180' />
+                    </summary>
+                    <div className='mt-3 min-w-0 space-y-2 border-t pt-3 text-xs text-muted-foreground/70'>
+                      <StatusRow label='文件ID' value={file.file_id} monospace />
+                      <StatusRow label='文件名' value={file.filename} />
+                      <StatusRow label='大小' value={formatBytes(file.size)} />
+                      <StatusRow label='SHA-256' value={file.sha256} monospace />
+                      <StatusRow label='proof' value={file.proof_id ?? file.version?.proof_id ?? '尚未存证'} monospace />
+                    </div>
+                  </details>
                 ))}
               </div>
             </div>
@@ -283,14 +333,27 @@ function anchorStatus(snapshot: ReturnType<typeof latestProofForFile>) {
   return String(proof?.anchor_status ?? proof?.anchorStatus ?? '无')
 }
 
+function fileVersionLabel(file: AgentFileContext) {
+  if (file.version) return `v${file.version.version_no}`
+  if (file.document) return '新版本候选'
+  return '无版本'
+}
+
+function proofLabel(
+  file: AgentFileContext,
+  snapshot: ReturnType<typeof latestProofForFile>
+) {
+  return file.proof_id ?? file.version?.proof_id ?? snapshot?.proof_id ?? '尚未存证'
+}
+
 function toolLabel(call: AgentToolCall) {
   if (call.tool_name === 'uploadFileContext') return '读取文件并计算指纹'
   if (call.tool_name === 'preserveEvidence') return '提交文件存证'
   if (call.tool_name === 'preserveEvidenceVersion') return '提交为新版本存证'
   if (call.tool_name === 'verifyEvidence') {
     const result = call.output?.result ?? call.output?.status
-    if (call.output?.agent_classification === 'possible_new_version') {
-      return '检查结果：发现旧版本，可作为新版本'
+    if (call.output?.agent_classification === 'version_candidate') {
+      return '检查结果：发现已有文档，可作为新版本'
     }
     if (result === 'preserved') return '检查结果：文件和存证版本一致'
     if (result === 'mismatch') return '检查结果：文件和存证版本不一致'
@@ -304,6 +367,16 @@ function toolLabel(call: AgentToolCall) {
 function shortSha(sha256?: string) {
   if (!sha256) return ''
   return `${sha256.slice(0, 10)}...${sha256.slice(-6)}`
+}
+
+function compactFilename(filename: string, max = 28) {
+  if (filename.length <= max) return filename
+  const dot = filename.lastIndexOf('.')
+  const ext = dot > 0 && filename.length - dot <= 8 ? filename.slice(dot) : ''
+  const basename = ext ? filename.slice(0, dot) : filename
+  const head = Math.max(8, Math.floor((max - ext.length - 3) * 0.58))
+  const tail = Math.max(5, max - ext.length - 3 - head)
+  return `${basename.slice(0, head)}...${basename.slice(-tail)}${ext}`
 }
 
 function formatBytes(bytes?: number) {

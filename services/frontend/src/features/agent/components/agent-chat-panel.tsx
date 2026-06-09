@@ -423,8 +423,8 @@ function toolLabel(toolName: string, output: Record<string, unknown> | null) {
   if (toolName === 'preserveEvidenceVersion') return '已提交为新版本'
   if (toolName === 'verifyEvidence') {
     const result = output?.result ?? output?.status
-    if (output?.agent_classification === 'possible_new_version') {
-      return '发现旧版本，当前文件可作为新版本'
+    if (output?.agent_classification === 'version_candidate') {
+      return '发现已有文档，当前文件可作为新版本'
     }
     if (result === 'preserved') return '已确认文件和存证版本一致'
     if (result === 'mismatch') return '已发现文件和存证版本不一致'

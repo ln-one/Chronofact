@@ -11,6 +11,7 @@ import {
   type AgentActionRequired,
   type AgentConversationDetail,
 } from './agent-api'
+import { ensureChronofactOrganization } from '@/features/auth/limora-api'
 import { useChronofactAssistantRuntime } from './agent-runtime'
 import { AgentThreadList } from './components/agent-thread-list'
 import { AgentChatPanel } from './components/agent-chat-panel'
@@ -28,9 +29,20 @@ export default function AgentWorkspace() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
 
+  const limoraQuery = useQuery({
+    queryKey: ['limora', 'chronofact-organization'] as const,
+    queryFn: ensureChronofactOrganization,
+    staleTime: 30_000,
+  })
+
+  const activeMembership = limoraQuery.data?.membership ?? null
+  const activeOrganizationId = activeMembership?.organizationId ?? null
+  const identity = limoraQuery.data?.session.identity ?? null
+
   const conversationsQuery = useQuery({
-    queryKey: queryKeys.conversations,
+    queryKey: [...queryKeys.conversations, activeOrganizationId] as const,
     queryFn: listAgentConversations,
+    enabled: Boolean(activeOrganizationId),
     staleTime: 0,
   })
 
@@ -46,7 +58,10 @@ export default function AgentWorkspace() {
   })
 
   const createConversationMutation = useMutation({
-    mutationFn: () => createAgentConversation(),
+    mutationFn: () => {
+      if (!activeOrganizationId) throw new Error('当前账号还没有可用的组织空间。')
+      return createAgentConversation({ organizationId: activeOrganizationId })
+    },
     onSuccess: async (conversation) => {
       setCurrentConversationId(conversation.conversation_id)
       setSelectedFileId(null)
@@ -56,13 +71,16 @@ export default function AgentWorkspace() {
   })
 
   const uploadMutation = useMutation({
-    mutationFn: async ({ conversationId, file }: { conversationId: string; file: File }) =>
-      uploadAgentFile({
+    mutationFn: async ({ conversationId, file }: { conversationId: string; file: File }) => {
+      if (!activeOrganizationId) throw new Error('当前账号还没有可用的组织空间。')
+      return uploadAgentFile({
         conversationId,
+        organizationId: activeOrganizationId,
         file,
         contentBase64: await fileToBase64(file),
         mimeType: file.type,
-      }),
+      })
+    },
     onSuccess: async (uploaded) => {
       setSelectedFileId(uploaded.file_id)
       await Promise.all([
@@ -93,10 +111,13 @@ export default function AgentWorkspace() {
   const conversations = conversationsQuery.data ?? []
   const detail = detailQuery.data ?? null
   const busy =
+    limoraQuery.isLoading ||
     createConversationMutation.isPending ||
     uploadMutation.isPending ||
     runMutation.isPending
+  const sending = uploadMutation.isPending || runMutation.isPending
   const loading =
+    limoraQuery.isLoading ||
     conversationsQuery.isLoading ||
     (Boolean(currentConversationId) && detailQuery.isLoading && !detail)
 
@@ -111,7 +132,7 @@ export default function AgentWorkspace() {
   }, [detail?.files, detail?.messages])
 
   useEffect(() => {
-    if (bootstrappedRef.current || conversationsQuery.isLoading) return
+    if (!activeOrganizationId || bootstrappedRef.current || conversationsQuery.isLoading) return
     bootstrappedRef.current = true
     const first = conversationsQuery.data?.[0]
     if (first) {
@@ -119,7 +140,7 @@ export default function AgentWorkspace() {
       return
     }
     void createConversationMutation.mutateAsync()
-  }, [conversationsQuery.data, conversationsQuery.isLoading, createConversationMutation])
+  }, [activeOrganizationId, conversationsQuery.data, conversationsQuery.isLoading, createConversationMutation])
 
   useEffect(() => {
     if (!detail) return
@@ -155,6 +176,7 @@ export default function AgentWorkspace() {
     const fileId = uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id
     await runMutation.mutateAsync({
       conversationId,
+      organizationId: activeOrganizationId!,
       message,
       fileId,
     })
@@ -164,6 +186,7 @@ export default function AgentWorkspace() {
     if (!currentConversationId) return
     await runMutation.mutateAsync({
       conversationId: currentConversationId,
+      organizationId: activeOrganizationId!,
       message: '确认存证',
       fileId: action.file_id,
       confirmedAction: true,
@@ -197,6 +220,8 @@ export default function AgentWorkspace() {
             conversations={conversations}
             currentConversationId={currentConversationId}
             loading={loading}
+            identity={identity}
+            organization={activeMembership?.organization ?? null}
             onCreateConversation={() => void createAndOpenConversation()}
             onSelectConversation={(conversationId) => {
               setCurrentConversationId(conversationId)
@@ -210,7 +235,7 @@ export default function AgentWorkspace() {
             files={detail?.files ?? []}
             toolCalls={detail?.tool_calls ?? []}
             loading={loading}
-            sending={busy}
+            sending={sending}
             onSend={(input) => void handleSend(input)}
             onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
           />
@@ -219,6 +244,7 @@ export default function AgentWorkspace() {
         <div className='h-full min-h-0 min-w-0 overflow-hidden border-l bg-muted/20'>
           <EvidenceConsole
             detail={detail}
+            organization={activeMembership?.organization ?? null}
             selectedFileId={selectedFileId}
             busy={busy}
             pendingAction={pendingAction}

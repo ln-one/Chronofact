@@ -161,6 +161,118 @@ test("confirmed preserve calls Chronofact API and records tool call output", asy
   assert.equal(chronofact.requests[0].body.sha256, file.body.sha256);
 });
 
+test("organization document library is shared across conversations by digest", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const first = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_a",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_a",
+    organization_id: "org_001",
+    message: "帮我存证这个文件",
+    file_id: first.body.file_id,
+    confirmed_action: true
+  });
+
+  const second = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_b",
+    filename: "copy.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  assert.equal(second.body.document_match.type, "exact");
+
+  const verified = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_b",
+    organization_id: "org_001",
+    message: "这个文件存证了吗",
+    file_id: second.body.file_id
+  });
+
+  assert.equal(verified.status, 200);
+  assert.equal(verified.body.verification.agent_classification, "preserved");
+  assert.equal(verified.body.file.document_id, second.body.document_match.document_id);
+  assert.equal(verified.body.file.document_version_id, second.body.document_match.latest_version.document_version_id);
+
+  const detail = await getJson(`${baseUrl}/agent/conversations/conv_b`);
+  assert.equal(detail.body.files[0].document.display_name, "report.txt");
+  assert.equal(detail.body.files[0].version.version_no, 1);
+});
+
+test("Limora session scopes files and forwards auth headers to Chronofact API", async (t) => {
+  const limora = await withLimoraStub(t, {
+    memberships: [
+      { organizationId: "org-a", organizationName: "Org A", permissions: ["chronofact.evidence.create", "chronofact.evidence.verify"] },
+      { organizationId: "org-b", organizationName: "Org B", permissions: ["chronofact.evidence.create", "chronofact.evidence.verify"] }
+    ]
+  });
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    limoraApiUrl: limora.baseUrl
+  });
+  t.after(cleanup);
+
+  const headers = { cookie: "better-auth.session_token=session-a" };
+  const fileA = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_a",
+    organization_id: "org-a",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  }, headers);
+  assert.equal(fileA.status, 201);
+  assert.equal(fileA.body.organization_id, "org-a");
+
+  const preserved = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_a",
+    organization_id: "org-a",
+    message: "帮我存证这个文件",
+    file_id: fileA.body.file_id,
+    confirmed_action: true
+  }, headers);
+  assert.equal(preserved.status, 200);
+  assert.equal(chronofact.requests.at(-1)?.headers.cookie, headers.cookie);
+
+  const fileB = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_b",
+    organization_id: "org-b",
+    filename: "copy.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  }, headers);
+  assert.equal(fileB.status, 201);
+  assert.equal(fileB.body.document_match.type, "none");
+
+  const denied = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_b",
+    organization_id: "org-a",
+    message: "验证这个文件",
+    file_id: fileB.body.file_id
+  }, headers);
+  assert.equal(denied.status, 403);
+});
+
+test("Limora rejects organizations outside current membership scope", async (t) => {
+  const limora = await withLimoraStub(t, {
+    memberships: [{ organizationId: "org-a", organizationName: "Org A", permissions: [] }]
+  });
+  const { baseUrl, cleanup } = await withAgent(t, { limoraApiUrl: limora.baseUrl });
+  t.after(cleanup);
+
+  const response = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_a",
+    organization_id: "org-b",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  }, { cookie: "better-auth.session_token=session-a" });
+
+  assert.equal(response.status, 403);
+  assert.equal(response.body.error.code, "organization_access_denied");
+});
+
 test("stale version asset falls back to first preserve instead of failing forever", async (t) => {
   const chronofact = await withChronofactStub(t, { staleVersionAsset: true });
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
@@ -249,11 +361,11 @@ test("verification does not compare different filenames to the latest proof and 
   });
 
   assert.equal(sameNameChat.status, 200);
-  assert.equal(sameNameChat.body.verification.result, "mismatch");
-  assert.equal(sameNameChat.body.verification.agent_classification, "possible_new_version");
-  assert.equal(sameNameChat.body.explanation, undefined);
+  assert.equal(sameNameChat.body.verification.result, "not_preserved");
+  assert.equal(sameNameChat.body.verification.agent_classification, "version_candidate");
+  assert.equal(sameNameChat.body.explanation, null);
   assert.match(sameNameChat.body.reply, /新版本/);
-  assert.equal(chronofact.requests.at(-1)?.body.proof_id, "proof_001");
+  assert.notEqual(chronofact.requests.at(-1)?.body.proof_id, "proof_001");
 
   const versionPreserve = await postJson(`${baseUrl}/agent/chat`, {
     conversation_id: "conv_001",
@@ -413,16 +525,105 @@ test("agent run persists a running assistant message for refresh recovery", asyn
   assert.match(completed.body.messages.at(-1).content, /一致/);
 });
 
+test("agent can summarize organization document library without a current file", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_summary",
+    organization_id: "org_001",
+    title: "文件库分析"
+  });
+  const started = await postJson(`${baseUrl}/agent/runs`, {
+    conversation_id: "conv_summary",
+    organization_id: "org_001",
+    message: "我要看所有文件的存证情况"
+  });
+  assert.equal(started.status, 202);
+
+  const completed = await waitForCompletedRun(`${baseUrl}/agent/conversations/conv_summary`);
+  const assistant = completed.body.messages.at(-1);
+  assert.equal(completed.body.runs[0].status, "completed");
+  assert.equal(assistant.status, "completed");
+  assert.match(assistant.content, /1 个已建档文件/);
+  assert.match(assistant.content, /report\.txt/);
+  assert.match(assistant.content, /已存证/);
+  assert.doesNotMatch(assistant.content, /请先上传/);
+  assert.equal(assistant.metadata.action, "library_summary");
+  assert.equal(completed.body.tool_calls.at(-1).tool_name, "listDocumentLibrary");
+});
+
+test("agent analyzes uploaded text file content without calling evidence verification", async (t) => {
+  const llmCalls: any[] = [];
+  const { baseUrl, cleanup } = await withAgent(t, {
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        llmCalls.push(JSON.parse(String(options?.body)));
+        return Response.json({
+          choices: [{
+            message: {
+              content: "这份文件主要说明诚信考试承诺，包含考试纪律、责任确认和违规后果。"
+            }
+          }]
+        });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_analysis",
+    filename: "commitment.txt",
+    content_base64: Buffer.from("诚信考试承诺书\n本人承诺遵守考试纪律，独立完成考试。").toString("base64"),
+    mime_type: "text/plain"
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_analysis",
+    organization_id: "org_001",
+    message: "帮我分析这个文件内容",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.match(chat.body.reply, /诚信考试承诺/);
+  assert.equal(chat.body.action, "file_analysis");
+  assert.equal(chat.body.tool_calls[0].tool_name, "analyzeFileContent");
+  assert.match(chat.body.tool_calls[0].output.preview, /考试纪律/);
+  assert.equal(chat.body.verification, null);
+  assert.equal(llmCalls.length, 1);
+});
+
 async function withAgent(
   t: { after: (fn: () => Promise<void>) => void },
-  options: { chronofactApiUrl?: string; env?: Record<string, string>; fetchImpl?: typeof fetch } = {}
+  options: { chronofactApiUrl?: string; limoraApiUrl?: string; env?: Record<string, string>; fetchImpl?: typeof fetch } = {}
 ) {
   const dataDir = await mkdtemp(join(tmpdir(), "chronofact-agent-"));
   const { handler, close } = createChronofactAgentApp({
     dataDir,
     env: {
-      CHRONOFACT_API_URL: options.chronofactApiUrl ?? "http://chronofact.example.test"
-      ,
+      CHRONOFACT_API_URL: options.chronofactApiUrl ?? "http://chronofact.example.test",
+      ...(options.limoraApiUrl ? { CHRONOFACT_AGENT_LIMORA_URL: options.limoraApiUrl } : {}),
       ...(options.env || {})
     },
     fetchImpl: options.fetchImpl
@@ -442,11 +643,11 @@ async function withChronofactStub(
   t: { after: (fn: () => Promise<void>) => void },
   options: { delayMs?: number; mismatchWithoutProof?: boolean; staleVersionAsset?: boolean } = {}
 ) {
-  const requests: Array<{ path: string; body: any }> = [];
+  const requests: Array<{ path: string; body: any; headers: Record<string, string | undefined> }> = [];
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
     const body = await readJson(request);
-    requests.push({ path: url.pathname, body });
+    requests.push({ path: url.pathname, body, headers: { cookie: request.headers.cookie, authorization: request.headers.authorization } });
 
     if (url.pathname.endsWith("/evidence/preserve")) {
       return sendJson(response, 201, {
@@ -544,15 +745,60 @@ async function withChronofactStub(
   return { baseUrl: `http://127.0.0.1:${port}`, requests };
 }
 
+async function withLimoraStub(
+  t: { after: (fn: () => Promise<void>) => void },
+  options: {
+    memberships: Array<{ organizationId: string; organizationName: string; permissions: string[] }>;
+  }
+) {
+  const requests: Array<{ path: string; body: any; headers: Record<string, string | undefined> }> = [];
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const body = await readJson(request);
+    requests.push({ path: url.pathname, body, headers: { cookie: request.headers.cookie, authorization: request.headers.authorization } });
+
+    if (!request.headers.cookie && !request.headers.authorization) {
+      return sendJson(response, 401, { error: { code: "UNAUTHORIZED", message: "Authentication required" } });
+    }
+
+    if (url.pathname === "/v1/sessions/current") {
+      return sendJson(response, 200, {
+        data: {
+          session: { id: "session-a", userId: "user-a", expiresAt: "2099-01-01T00:00:00.000Z" },
+          identity: { id: "user-a", email: "user@example.com", name: "User A" },
+          memberships: options.memberships.map((membership, index) => ({
+            id: `membership-${index + 1}`,
+            organizationId: membership.organizationId,
+            identityId: "user-a",
+            permissions: membership.permissions,
+            organization: {
+              id: membership.organizationId,
+              name: membership.organizationName
+            }
+          }))
+        }
+      });
+    }
+
+    return sendJson(response, 404, { error: { code: "NOT_FOUND", message: "not found" } });
+  });
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  t.after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+  const { port } = server.address() as { port: number };
+  return { baseUrl: `http://127.0.0.1:${port}`, requests };
+}
+
 async function getJson(url: string) {
   const response = await fetch(url);
   return { status: response.status, body: await response.json() };
 }
 
-async function postJson(url: string, body: unknown) {
+async function postJson(url: string, body: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body)
   });
   return { status: response.status, body: await response.json() };

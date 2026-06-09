@@ -6,6 +6,7 @@ import { cors } from "hono/cors";
 import { ZodError } from "zod";
 import { chatSchema, createAgentService, runSchema, uploadFileSchema } from "./agent.js";
 import { createChronofactClient } from "./chronofactClient.js";
+import { createLimoraClient } from "./limoraClient.js";
 import { createAgentLlmClient } from "./llmClient.js";
 import { createAgentStore } from "./store.js";
 
@@ -34,13 +35,18 @@ export function createChronofactAgentApp({
     fetchImpl
   });
   const llmClient = createAgentLlmClient({ env, fetchImpl });
+  const limoraUrl = env.CHRONOFACT_AGENT_LIMORA_URL || env.LIMORA_API_URL || "";
+  const limoraClient = limoraUrl
+    ? createLimoraClient({ baseUrl: limoraUrl, fetchImpl })
+    : null;
   const agent = createAgentService({
     store,
     chronofactClient,
     uploadDir: join(dataDir, "uploads"),
-    llmClient
+    llmClient,
+    limoraClient
   });
-  const honoApp = createHonoApp({ agent, store, llmClient });
+  const honoApp = createHonoApp({ agent, store, llmClient, env });
 
   return {
     close: () => store.close(),
@@ -72,15 +78,18 @@ export async function startServer({
 function createHonoApp({
   agent,
   store,
-  llmClient
+  llmClient,
+  env
 }: {
   agent: ReturnType<typeof createAgentService>;
   store: ReturnType<typeof createAgentStore>;
   llmClient: ReturnType<typeof createAgentLlmClient>;
+  env: Record<string, string | undefined>;
 }) {
   const app = new OpenAPIHono();
   app.use("*", cors({
-    origin: "*",
+    origin: env.CHRONOFACT_AGENT_CORS_ORIGIN || env.CORS_ORIGIN || "http://127.0.0.1:5176",
+    credentials: true,
     allowMethods: ["GET", "POST", "OPTIONS"],
     allowHeaders: ["content-type", "authorization", "cookie"]
   }));
@@ -109,9 +118,14 @@ function createHonoApp({
     status: 201
   }), async (c) => {
     const body = await c.req.json().catch(() => ({}));
+    const auth = await agent.resolveAuth({
+      organizationId: typeof body?.organization_id === "string" ? body.organization_id : undefined,
+      requestContext: requestContext(c.req.raw.headers)
+    });
     const conversation = store.createConversation({
       conversationId: typeof body?.conversation_id === "string" ? body.conversation_id : undefined,
-      title: typeof body?.title === "string" ? body.title : undefined
+      title: typeof body?.title === "string" ? body.title : undefined,
+      organizationId: auth.organizationId
     });
     return c.json({
       conversation: toConversationResponse(conversation),
@@ -125,14 +139,14 @@ function createHonoApp({
     summary: "Upload file context",
     bodySchema: uploadFileSchema,
     status: 201
-  }), async (c) => c.json(await agent.uploadFile(await c.req.json()), 201));
+  }), async (c) => c.json(await agent.uploadFile(await c.req.json(), requestContext(c.req.raw.headers)), 201));
 
   app.openapi(jsonRoute({
     method: "post",
     path: "/agent/chat",
     summary: "Run synchronous agent chat",
     bodySchema: chatSchema
-  }), async (c) => c.json(await agent.chat(await c.req.json()), 200));
+  }), async (c) => c.json(await agent.chat(await c.req.json(), requestContext(c.req.raw.headers)), 200));
 
   app.openapi(jsonRoute({
     method: "post",
@@ -140,15 +154,20 @@ function createHonoApp({
     summary: "Start durable agent run",
     bodySchema: runSchema,
     status: 202
-  }), async (c) => c.json(agent.startRun(await c.req.json()), 202));
+  }), async (c) => c.json(await agent.startRun(await c.req.json(), requestContext(c.req.raw.headers)), 202));
 
   app.openapi(jsonRoute({
     method: "get",
     path: "/agent/conversations",
     summary: "List agent conversations"
-  }), (c) => c.json({
-    conversations: store.listConversations().map(toConversationResponse)
-  }, 200));
+  }), async (c) => {
+    const auth = await agent.resolveAuth({
+      requestContext: requestContext(c.req.raw.headers)
+    });
+    return c.json({
+      conversations: store.listConversations({ organizationId: auth.organizationId }).map(toConversationResponse)
+    }, 200);
+  });
 
   app.openapi(createRoute({
     method: "get",
@@ -163,19 +182,25 @@ function createHonoApp({
       404: jsonResponse("Conversation not found", errorResponseSchema)
     },
     summary: "Get agent conversation detail"
-  }), (c) => {
+  }), async (c) => {
+    const auth = await agent.resolveAuth({
+      requestContext: requestContext(c.req.raw.headers)
+    });
     const detail = store.describeConversation(c.req.param("conversation_id"));
     if (!detail) {
+      return c.json({ error: { code: "conversation_not_found", message: "Conversation not found." } }, 404);
+    }
+    if (detail.conversation.organizationId !== auth.organizationId) {
       return c.json({ error: { code: "conversation_not_found", message: "Conversation not found." } }, 404);
     }
     return c.json({
       conversation: toConversationResponse(detail.conversation),
       messages: detail.messages.map(toMessageResponse),
-      files: detail.files.map(toFileResponse),
+      files: detail.files.map((file) => toFileResponse(file, store)),
       tool_calls: detail.tool_calls.map(toToolCallResponse),
       proof_snapshots: detail.proof_snapshots.map(toProofSnapshotResponse),
       runs: detail.runs.map(toRunResponse),
-      current_file: toFileResponse(detail.files[detail.files.length - 1] ?? null)
+      current_file: toFileResponse(detail.files[detail.files.length - 1] ?? null, store)
     }, 200);
   });
 
@@ -196,6 +221,15 @@ function createHonoApp({
   return app;
 }
 
+function requestContext(headers: Headers) {
+  return {
+    authHeaders: {
+      cookie: headers.get("cookie") ?? undefined,
+      authorization: headers.get("authorization") ?? undefined
+    }
+  };
+}
+
 function errorResponse(error: unknown) {
   if (error instanceof ZodError) {
     return {
@@ -214,7 +248,9 @@ function errorResponse(error: unknown) {
     status,
     body: {
       error: {
-        code: status >= 500 ? "agent_error" : "request_failed",
+        code: typeof (error as any)?.code === "string"
+          ? (error as any).code
+          : status >= 500 ? "agent_error" : "request_failed",
         message: error instanceof Error ? error.message : "Unknown error."
       }
     }
@@ -271,6 +307,7 @@ function jsonResponse(description: string, schema: any = jsonResponseSchema) {
 function toConversationResponse(row: any) {
   return {
     conversation_id: row.conversationId,
+    organization_id: row.organizationId,
     title: row.title,
     created_at: row.createdAt,
     updated_at: row.updatedAt
@@ -289,18 +326,50 @@ function toMessageResponse(row: any) {
   };
 }
 
-function toFileResponse(row: any) {
+function toFileResponse(row: any, store?: ReturnType<typeof createAgentStore>) {
   if (!row) {
     return null;
   }
+  const detail = store?.describeFile(row);
   return {
     file_id: row.fileId,
     conversation_id: row.conversationId,
+    organization_id: row.organizationId,
     filename: row.filename,
     sha256: row.sha256,
     size: row.size,
     mime_type: row.mimeType,
     proof_id: row.proofId,
+    document_id: row.documentId,
+    document_version_id: row.documentVersionId,
+    document: detail?.document ? toDocumentResponse(detail.document) : null,
+    version: detail?.version ? toDocumentVersionResponse(detail.version) : null,
+    created_at: row.createdAt
+  };
+}
+
+function toDocumentResponse(row: any) {
+  return {
+    document_id: row.documentId,
+    organization_id: row.organizationId,
+    display_name: row.displayName,
+    normalized_name: row.normalizedName,
+    latest_version_id: row.latestVersionId,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt
+  };
+}
+
+function toDocumentVersionResponse(row: any) {
+  return {
+    document_version_id: row.documentVersionId,
+    document_id: row.documentId,
+    file_id: row.fileId,
+    sha256: row.sha256,
+    version_no: row.versionNo,
+    proof_id: row.proofId,
+    asset_id: row.assetId,
+    chronofact_version_id: row.chronofactVersionId,
     created_at: row.createdAt
   };
 }

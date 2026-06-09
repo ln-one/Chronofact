@@ -16,9 +16,11 @@ export function createChronofactClient({
       assetTitle?: string;
       assetType?: string;
       sha256: string;
+      requestHeaders?: Record<string, string>;
     }) {
       return requestJson(fetchImpl, `${normalizedBaseUrl}/organizations/${encodeURIComponent(input.organizationId)}/evidence/preserve`, {
         method: "POST",
+        requestHeaders: input.requestHeaders,
         body: {
           filename: input.filename,
           asset_title: input.assetTitle,
@@ -34,9 +36,11 @@ export function createChronofactClient({
       filename: string;
       assetType?: string;
       sha256: string;
+      requestHeaders?: Record<string, string>;
     }) {
       return requestJson(fetchImpl, `${normalizedBaseUrl}/assets/${encodeURIComponent(input.assetId)}/versions`, {
         method: "POST",
+        requestHeaders: input.requestHeaders,
         body: {
           workspace_id: input.organizationId,
           filename: input.filename,
@@ -46,9 +50,10 @@ export function createChronofactClient({
       });
     },
 
-    verifyEvidence(input: { organizationId: string; sha256: string; proofId?: string | null; versionId?: string | null }) {
+    verifyEvidence(input: { organizationId: string; sha256: string; proofId?: string | null; versionId?: string | null; requestHeaders?: Record<string, string> }) {
       return requestJson(fetchImpl, `${normalizedBaseUrl}/organizations/${encodeURIComponent(input.organizationId)}/evidence/verify`, {
         method: "POST",
+        requestHeaders: input.requestHeaders,
         body: {
           sha256: input.sha256,
           proof_id: input.proofId ?? undefined,
@@ -68,19 +73,23 @@ export function createChronofactClient({
       });
     },
 
-    findDigest(input: { organizationId: string; sha256: string }) {
+    findDigest(input: { organizationId: string; sha256: string; requestHeaders?: Record<string, string> }) {
       return requestJson(
         fetchImpl,
-        `${normalizedBaseUrl}/organizations/${encodeURIComponent(input.organizationId)}/evidence/digests/${encodeURIComponent(input.sha256)}`
+        `${normalizedBaseUrl}/organizations/${encodeURIComponent(input.organizationId)}/evidence/digests/${encodeURIComponent(input.sha256)}`,
+        { requestHeaders: input.requestHeaders }
       );
     }
   };
 }
 
-async function requestJson(fetchImpl: typeof fetch, url: string, options: { method?: string; body?: unknown } = {}) {
+async function requestJson(fetchImpl: typeof fetch, url: string, options: { method?: string; body?: unknown; requestHeaders?: Record<string, string> } = {}) {
   const response = await fetchImpl(url, {
     method: options.method ?? "GET",
-    headers: { "content-type": "application/json" },
+    headers: {
+      ...forwardedHeaders(options.requestHeaders),
+      "content-type": "application/json"
+    },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });
   const payload = await response.json().catch(() => ({}));
@@ -92,4 +101,11 @@ async function requestJson(fetchImpl: typeof fetch, url: string, options: { meth
     throw error;
   }
   return payload;
+}
+
+function forwardedHeaders(headers?: Record<string, string>) {
+  const forwarded: Record<string, string> = {};
+  if (headers?.cookie) forwarded.cookie = headers.cookie;
+  if (headers?.authorization) forwarded.authorization = headers.authorization;
+  return forwarded;
 }

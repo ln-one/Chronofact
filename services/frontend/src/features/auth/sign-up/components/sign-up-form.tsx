@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useNavigate } from '@tanstack/react-router'
 import { Loader2, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { IconFacebook, IconGithub } from '@/assets/brand-icons'
-import { sleep, cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -17,9 +19,11 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/password-input'
+import { registerLimora } from '../../limora-api'
 
 const formSchema = z
   .object({
+    name: z.string().min(1, 'Please enter your name.'),
     email: z.email({
       error: (iss) =>
         iss.input === '' ? 'Please enter your email.' : undefined,
@@ -27,7 +31,7 @@ const formSchema = z
     password: z
       .string()
       .min(1, 'Please enter your password.')
-      .min(7, 'Password must be at least 7 characters long.'),
+      .min(8, 'Password must be at least 8 characters long.'),
     confirmPassword: z.string().min(1, 'Please confirm your password.'),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -40,27 +44,42 @@ export function SignUpForm({
   ...props
 }: React.HTMLAttributes<HTMLFormElement>) {
   const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()
+  const { auth } = useAuthStore()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       email: '',
+      name: '',
       password: '',
       confirmPassword: '',
     },
   })
 
-  function onSubmit(data: z.infer<typeof formSchema>) {
+  async function onSubmit(data: z.infer<typeof formSchema>) {
     setIsLoading(true)
-
-    toast.promise(sleep(2000), {
-      loading: 'Creating account...',
-      success: () => {
-        setIsLoading(false)
-        return `Account created for ${data.email}.`
-      },
-      error: 'Error',
-    })
+    try {
+      const payload = await registerLimora({
+        name: data.name,
+        email: data.email,
+        password: data.password,
+      })
+      const identity = payload.data.identity
+      auth.setUser({
+        accountNo: identity.id,
+        email: identity.email,
+        role: ['user'],
+        exp: Date.now() + 24 * 60 * 60 * 1000,
+      })
+      auth.setAccessToken('limora-cookie-session')
+      toast.success(`Account created for ${identity.email}.`)
+      navigate({ to: '/', replace: true })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -70,6 +89,19 @@ export function SignUpForm({
         className={cn('grid gap-3', className)}
         {...props}
       >
+        <FormField
+          control={form.control}
+          name='name'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Name</FormLabel>
+              <FormControl>
+                <Input placeholder='Your name' {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <FormField
           control={form.control}
           name='email'

@@ -85,8 +85,8 @@ test("agent preserves and verifies through the real Chronofact API service", asy
     file_id: changedSameName.body.file_id
   });
   assert.equal(possibleVersion.status, 200);
-  assert.equal(possibleVersion.body.verification.result, "mismatch");
-  assert.equal(possibleVersion.body.verification.agent_classification, "possible_new_version");
+  assert.equal(possibleVersion.body.verification.result, "not_preserved");
+  assert.equal(possibleVersion.body.verification.agent_classification, "version_candidate");
   assert.match(possibleVersion.body.reply, /新版本/);
 
   const preservedVersion = await postJson(`${agentUrl}/agent/chat`, {

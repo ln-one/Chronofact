@@ -6,10 +6,14 @@ import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import {
   agentRuns,
   conversations,
+  documentVersions,
+  documents,
   files,
   messages,
   proofSnapshots,
   toolCalls,
+  type Document,
+  type DocumentVersion,
   type StoredFile
 } from "./schema.js";
 
@@ -31,7 +35,7 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
     return `${prefix}_${String(row.count + 1).padStart(3, "0")}`;
   }
 
-  function ensureConversation(conversationId?: string | null, title = "Chronofact conversation") {
+  function ensureConversation(conversationId?: string | null, title = "Chronofact conversation", organizationId = "org_001") {
     const id = conversationId || nextId("conv", "conversations", "conversation_id");
     const existing = db.select().from(conversations).where(eq(conversations.conversationId, id)).get();
     if (existing) {
@@ -40,6 +44,7 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
     const timestamp = now();
     const conversation = {
       conversationId: id,
+      organizationId,
       title,
       createdAt: timestamp,
       updatedAt: timestamp
@@ -80,8 +85,8 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
 
     ensureConversation,
 
-    createConversation(input: { conversationId?: string | null; title?: string | null } = {}) {
-      return ensureConversation(input.conversationId, input.title || "新对话");
+    createConversation(input: { conversationId?: string | null; title?: string | null; organizationId?: string | null } = {}) {
+      return ensureConversation(input.conversationId, input.title || "新对话", input.organizationId ?? "org_001");
     },
 
     updateConversationTitle({ conversationId, title }: { conversationId: string; title: string }) {
@@ -199,6 +204,7 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
 
     addFile(input: {
       conversationId: string;
+      organizationId?: string | null;
       filename: string;
       sha256: string;
       size: number;
@@ -209,6 +215,9 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
       const file = {
         fileId: nextId("file", "files", "file_id"),
         conversationId: input.conversationId,
+        organizationId: input.organizationId ?? "org_001",
+        documentId: null,
+        documentVersionId: null,
         filename: input.filename,
         sha256: input.sha256,
         size: input.size,
@@ -224,6 +233,28 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
 
     setFileProof({ fileId, proofId }: { fileId: string; proofId: string | null }) {
       db.update(files).set({ proofId }).where(eq(files.fileId, fileId)).run();
+    },
+
+    attachFileDocumentVersion({
+      fileId,
+      documentId,
+      documentVersionId,
+      proofId
+    }: {
+      fileId: string;
+      documentId: string | null;
+      documentVersionId: string | null;
+      proofId?: string | null;
+    }) {
+      db.update(files)
+        .set({
+          documentId,
+          documentVersionId,
+          ...(proofId !== undefined ? { proofId } : {})
+        })
+        .where(eq(files.fileId, fileId))
+        .run();
+      return db.select().from(files).where(eq(files.fileId, fileId)).get() ?? null;
     },
 
     getFile(fileId: string): StoredFile | null {
@@ -247,6 +278,129 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
         .orderBy(desc(files.createdAt))
         .all()
         .find((file) => file.fileId !== excludeFileId && Boolean(file.proofId)) ?? null;
+    },
+
+    matchDocumentForFile({
+      organizationId,
+      filename,
+      sha256,
+      excludeFileId
+    }: {
+      organizationId: string;
+      filename: string;
+      sha256: string;
+      excludeFileId?: string | null;
+    }) {
+      const exactVersion = db.select().from(documentVersions).where(eq(documentVersions.sha256, sha256)).all()
+        .map((version) => ({ version, document: db.select().from(documents).where(eq(documents.documentId, version.documentId)).get() }))
+        .find(({ document, version }) => Boolean(document) && document!.organizationId === organizationId && version.fileId !== excludeFileId);
+      if (exactVersion?.document) {
+        return {
+          type: "exact" as const,
+          document: exactVersion.document,
+          version: exactVersion.version
+        };
+      }
+
+      const normalizedName = normalizeDocumentName(filename);
+      const sameNameDocument = db.select().from(documents)
+        .where(eq(documents.normalizedName, normalizedName))
+        .orderBy(desc(documents.updatedAt))
+        .all()
+        .find((document) => document.organizationId === organizationId) ?? null;
+      if (sameNameDocument) {
+        const latestVersion = sameNameDocument.latestVersionId
+          ? db.select().from(documentVersions).where(eq(documentVersions.documentVersionId, sameNameDocument.latestVersionId)).get() ?? null
+          : null;
+        return {
+          type: "same_name" as const,
+          document: sameNameDocument,
+          version: latestVersion
+        };
+      }
+
+      return {
+        type: "none" as const,
+        document: null,
+        version: null
+      };
+    },
+
+    getDocument(documentId: string): Document | null {
+      return db.select().from(documents).where(eq(documents.documentId, documentId)).get() ?? null;
+    },
+
+    getDocumentVersion(documentVersionId: string): DocumentVersion | null {
+      return db.select().from(documentVersions).where(eq(documentVersions.documentVersionId, documentVersionId)).get() ?? null;
+    },
+
+    latestDocumentVersion(documentId: string): DocumentVersion | null {
+      return db.select().from(documentVersions)
+        .where(eq(documentVersions.documentId, documentId))
+        .orderBy(desc(documentVersions.versionNo))
+        .get() ?? null;
+    },
+
+    createDocumentVersion(input: {
+      organizationId: string;
+      fileId: string;
+      filename: string;
+      sha256: string;
+      proofId: string | null;
+      assetId: string | null;
+      chronofactVersionId: string | null;
+      documentId?: string | null;
+    }) {
+      const timestamp = now();
+      let document = input.documentId ? db.select().from(documents).where(eq(documents.documentId, input.documentId)).get() ?? null : null;
+      if (!document) {
+        document = {
+          documentId: nextId("doc", "documents", "document_id"),
+          organizationId: input.organizationId,
+          displayName: input.filename,
+          normalizedName: normalizeDocumentName(input.filename),
+          latestVersionId: null,
+          createdAt: timestamp,
+          updatedAt: timestamp
+        };
+        db.insert(documents).values(document).run();
+      }
+      const latestVersion = db.select().from(documentVersions)
+        .where(eq(documentVersions.documentId, document.documentId))
+        .orderBy(desc(documentVersions.versionNo))
+        .get();
+      const version = {
+        documentVersionId: nextId("docver", "document_versions", "document_version_id"),
+        documentId: document.documentId,
+        fileId: input.fileId,
+        sha256: input.sha256,
+        versionNo: (latestVersion?.versionNo ?? 0) + 1,
+        proofId: input.proofId,
+        assetId: input.assetId,
+        chronofactVersionId: input.chronofactVersionId,
+        createdAt: timestamp
+      };
+      db.insert(documentVersions).values(version).run();
+      db.update(documents)
+        .set({
+          displayName: input.filename,
+          latestVersionId: version.documentVersionId,
+          updatedAt: timestamp
+        })
+        .where(eq(documents.documentId, document.documentId))
+        .run();
+      db.update(files)
+        .set({
+          documentId: document.documentId,
+          documentVersionId: version.documentVersionId,
+          proofId: input.proofId
+        })
+        .where(eq(files.fileId, input.fileId))
+        .run();
+      return {
+        document: db.select().from(documents).where(eq(documents.documentId, document.documentId)).get()!,
+        version
+      };
     },
 
     addToolCall(input: {
@@ -309,8 +463,38 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
         .get() ?? null;
     },
 
-    listConversations() {
-      return db.select().from(conversations).orderBy(desc(conversations.updatedAt)).all();
+    listConversations(input: { organizationId?: string | null } = {}) {
+      const rows = db.select().from(conversations).orderBy(desc(conversations.updatedAt)).all();
+      return input.organizationId
+        ? rows.filter((conversation) => conversation.organizationId === input.organizationId)
+        : rows;
+    },
+
+    listDocumentLibrary(organizationId: string) {
+      const orgDocuments = db.select().from(documents).orderBy(desc(documents.updatedAt)).all()
+        .filter((document) => document.organizationId === organizationId);
+      const allVersions = db.select().from(documentVersions).orderBy(asc(documentVersions.versionNo)).all();
+      const allFiles = db.select().from(files).orderBy(desc(files.createdAt)).all()
+        .filter((file) => file.organizationId === organizationId);
+
+      return {
+        documents: orgDocuments.map((document) => {
+          const versions = allVersions
+            .filter((version) => version.documentId === document.documentId)
+            .map((version) => ({
+              version,
+              file: allFiles.find((file) => file.fileId === version.fileId) ?? null
+            }));
+          return {
+            document,
+            latestVersion: versions.find((entry) => entry.version.documentVersionId === document.latestVersionId)?.version
+              ?? versions.at(-1)?.version
+              ?? null,
+            versions
+          };
+        }),
+        unversionedFiles: allFiles.filter((file) => !file.documentVersionId)
+      };
     },
 
     describeConversation(conversationId: string) {
@@ -326,6 +510,12 @@ export function createAgentStore({ dataDir, clock = () => new Date() }: { dataDi
         proof_snapshots: db.select().from(proofSnapshots).where(eq(proofSnapshots.conversationId, conversationId)).orderBy(asc(proofSnapshots.createdAt)).all(),
         runs: db.select().from(agentRuns).where(eq(agentRuns.conversationId, conversationId)).orderBy(asc(agentRuns.createdAt)).all()
       };
+    },
+
+    describeFile(file: StoredFile) {
+      const document = file.documentId ? db.select().from(documents).where(eq(documents.documentId, file.documentId)).get() ?? null : null;
+      const version = file.documentVersionId ? db.select().from(documentVersions).where(eq(documentVersions.documentVersionId, file.documentVersionId)).get() ?? null : null;
+      return { document, version };
     }
   };
 }
@@ -334,6 +524,7 @@ function migrate(sqlite: Database.Database) {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       conversation_id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL DEFAULT 'org_001',
       title TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -350,12 +541,35 @@ function migrate(sqlite: Database.Database) {
     CREATE TABLE IF NOT EXISTS files (
       file_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
+      organization_id TEXT NOT NULL DEFAULT 'org_001',
+      document_id TEXT,
+      document_version_id TEXT,
       filename TEXT NOT NULL,
       sha256 TEXT NOT NULL,
       size INTEGER NOT NULL,
       mime_type TEXT,
       storage_path TEXT,
       proof_id TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS documents (
+      document_id TEXT PRIMARY KEY,
+      organization_id TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL,
+      latest_version_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS document_versions (
+      document_version_id TEXT PRIMARY KEY,
+      document_id TEXT NOT NULL,
+      file_id TEXT NOT NULL,
+      sha256 TEXT NOT NULL,
+      version_no INTEGER NOT NULL,
+      proof_id TEXT,
+      asset_id TEXT,
+      chronofact_version_id TEXT,
       created_at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS tool_calls (
@@ -392,6 +606,10 @@ function migrate(sqlite: Database.Database) {
   `);
   addColumnIfMissing(sqlite, "messages", "metadata_json", "TEXT");
   addColumnIfMissing(sqlite, "messages", "status", "TEXT NOT NULL DEFAULT 'completed'");
+  addColumnIfMissing(sqlite, "conversations", "organization_id", "TEXT NOT NULL DEFAULT 'org_001'");
+  addColumnIfMissing(sqlite, "files", "organization_id", "TEXT NOT NULL DEFAULT 'org_001'");
+  addColumnIfMissing(sqlite, "files", "document_id", "TEXT");
+  addColumnIfMissing(sqlite, "files", "document_version_id", "TEXT");
 }
 
 function touchConversation(db: BetterSQLite3Database, conversationId: string, updatedAt: string) {
@@ -403,4 +621,8 @@ function addColumnIfMissing(sqlite: Database.Database, table: string, column: st
   if (!columns.some((entry) => entry.name === column)) {
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
+}
+
+function normalizeDocumentName(filename: string) {
+  return filename.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }

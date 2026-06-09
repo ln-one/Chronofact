@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { useTheme } from '@/context/theme-provider'
+import type { LimoraIdentity, LimoraOrganization } from '@/features/auth/limora-api'
 import type { AgentConversation } from '../agent-api'
 import { ChronofactLogo } from './chronofact-logo'
 
@@ -18,12 +19,16 @@ export function AgentThreadList({
   conversations,
   currentConversationId,
   loading,
+  identity,
+  organization,
   onCreateConversation,
   onSelectConversation,
 }: {
   conversations: AgentConversation[]
   currentConversationId: string | null
   loading: boolean
+  identity: LimoraIdentity | null
+  organization: LimoraOrganization | null
   onCreateConversation: () => void
   onSelectConversation: (conversationId: string) => void
 }) {
@@ -127,10 +132,11 @@ export function AgentThreadList({
       <div className='px-3 py-2.5'>
         <div className='flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-accent/50'>
           <div className='flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400'>
-            U
+            {initials(identity?.name || identity?.email || 'U')}
           </div>
           <div className='min-w-0 flex-1'>
-            <p className='truncate text-sm font-medium'>org_001</p>
+            <p className='truncate text-sm font-medium'>{organization?.name ?? '未选择空间'}</p>
+            <p className='truncate text-xs text-muted-foreground/55'>{identity?.email ?? '未登录'}</p>
           </div>
           <div className='flex gap-1'>
             <Button
@@ -149,6 +155,10 @@ export function AgentThreadList({
       </div>
     </div>
   )
+}
+
+function initials(value: string) {
+  return [...value.trim()].slice(0, 1).join('').toUpperCase() || 'U'
 }
 
 function formatRelativeTime(value: string) {

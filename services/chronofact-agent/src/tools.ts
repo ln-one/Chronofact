@@ -11,7 +11,8 @@ export function createChronofactAgentTools(client: ChronofactClient) {
       filename: z.string(),
       sha256: z.string(),
       assetTitle: z.string().optional(),
-      assetType: z.string().optional()
+      assetType: z.string().optional(),
+      requestHeaders: z.record(z.string(), z.string()).optional()
     }),
     execute: async (input) => client.preserveEvidence(input)
   });
@@ -24,7 +25,8 @@ export function createChronofactAgentTools(client: ChronofactClient) {
       assetId: z.string(),
       filename: z.string(),
       sha256: z.string(),
-      assetType: z.string().optional()
+      assetType: z.string().optional(),
+      requestHeaders: z.record(z.string(), z.string()).optional()
     }),
     execute: async (input) => client.preserveEvidenceVersion(input)
   });
@@ -36,7 +38,8 @@ export function createChronofactAgentTools(client: ChronofactClient) {
       organizationId: z.string(),
       sha256: z.string(),
       proofId: z.string().nullable().optional(),
-      versionId: z.string().nullable().optional()
+      versionId: z.string().nullable().optional(),
+      requestHeaders: z.record(z.string(), z.string()).optional()
     }),
     execute: async (input) => client.verifyEvidence(input)
   });

@@ -2,11 +2,9 @@ const agentApiBaseUrl = (
   import.meta.env.VITE_CHRONOFACT_AGENT_API_URL || 'http://127.0.0.1:3003'
 ).replace(/\/+$/, '')
 
-const organizationId =
-  import.meta.env.VITE_CHRONOFACT_ORGANIZATION_ID || 'org_001'
-
 export type AgentConversation = {
   conversation_id: string
+  organization_id?: string
   title: string
   created_at: string
   updated_at: string
@@ -29,13 +27,40 @@ export type AgentMessage = {
 
 export type AgentFileContext = {
   conversation_id?: string
+  organization_id?: string
   file_id: string
   filename: string
   sha256: string
   size: number
   mime_type?: string | null
   proof_id?: string | null
+  document_id?: string | null
+  document_version_id?: string | null
+  document?: AgentDocument | null
+  version?: AgentDocumentVersion | null
   created_at?: string
+}
+
+export type AgentDocument = {
+  document_id: string
+  organization_id: string
+  display_name: string
+  normalized_name: string
+  latest_version_id?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type AgentDocumentVersion = {
+  document_version_id: string
+  document_id: string
+  file_id: string
+  sha256: string
+  version_no: number
+  proof_id?: string | null
+  asset_id?: string | null
+  chronofact_version_id?: string | null
+  created_at: string
 }
 
 export type AgentToolCall = {
@@ -107,10 +132,10 @@ export async function listAgentConversations() {
   return payload.conversations
 }
 
-export async function createAgentConversation(title = '新对话') {
+export async function createAgentConversation(input: { title?: string; organizationId: string }) {
   const payload = await requestJson<{ conversation: AgentConversation }>('/agent/conversations', {
     method: 'POST',
-    body: { title },
+    body: { title: input.title ?? '新对话', organization_id: input.organizationId },
   })
   return payload.conversation
 }
@@ -123,6 +148,7 @@ export async function getAgentConversation(conversationId: string) {
 
 export async function uploadAgentFile(input: {
   conversationId: string
+  organizationId: string
   file: File
   contentBase64: string
   mimeType?: string
@@ -131,6 +157,7 @@ export async function uploadAgentFile(input: {
     method: 'POST',
     body: {
       conversation_id: input.conversationId,
+      organization_id: input.organizationId,
       filename: input.file.name,
       content_base64: input.contentBase64,
       mime_type: input.mimeType || input.file.type || 'application/octet-stream',
@@ -140,6 +167,7 @@ export async function uploadAgentFile(input: {
 
 export async function chatWithAgent(input: {
   conversationId: string
+  organizationId: string
   message: string
   fileId?: string | null
   confirmedAction?: boolean
@@ -148,7 +176,7 @@ export async function chatWithAgent(input: {
     method: 'POST',
     body: {
       conversation_id: input.conversationId,
-      organization_id: organizationId,
+      organization_id: input.organizationId,
       message: input.message,
       file_id: input.fileId ?? undefined,
       confirmed_action: input.confirmedAction ?? false,
@@ -158,6 +186,7 @@ export async function chatWithAgent(input: {
 
 export async function startAgentRun(input: {
   conversationId: string
+  organizationId: string
   message: string
   fileId?: string | null
   confirmedAction?: boolean
@@ -172,7 +201,7 @@ export async function startAgentRun(input: {
     method: 'POST',
     body: {
       conversation_id: input.conversationId,
-      organization_id: organizationId,
+      organization_id: input.organizationId,
       message: input.message,
       file_id: input.fileId ?? undefined,
       confirmed_action: input.confirmedAction ?? false,
@@ -190,6 +219,7 @@ async function requestJson<T>(
 ) {
   const response = await fetch(`${agentApiBaseUrl}${path}`, {
     method: options.method ?? 'GET',
+    credentials: 'include',
     headers: { 'content-type': 'application/json' },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   })

@@ -7,11 +7,29 @@ import type { StoredFile } from "./schema.js";
 import { createChronofactAgentTools } from "./tools.js";
 import type { ChronofactClient } from "./chronofactClient.js";
 import type { AgentLlmClient } from "./llmClient.js";
+import type { LimoraAuthContext, LimoraClient, RequestAuthHeaders } from "./limoraClient.js";
+import { extractFileContent, type FileContentAnalysis } from "./fileContent.js";
 
 const defaultOrganizationId = "org_001";
 
+type AgentRequestContext = {
+  authHeaders?: RequestAuthHeaders;
+};
+
+type ResolvedAgentAuth = {
+  organizationId: string;
+  identity: {
+    id: string;
+    email?: string | null;
+    name?: string | null;
+  } | null;
+  session: LimoraAuthContext["session"] | null;
+  memberships: LimoraAuthContext["memberships"];
+};
+
 export const uploadFileSchema = z.object({
   conversation_id: z.string().min(1),
+  organization_id: z.string().optional(),
   filename: z.string().min(1),
   content_base64: z.string().min(1),
   mime_type: z.string().optional()
@@ -33,19 +51,30 @@ export function createAgentService({
   store,
   chronofactClient,
   uploadDir,
-  llmClient = null
+  llmClient = null,
+  limoraClient = null
 }: {
   store: AgentStore;
   chronofactClient: ChronofactClient;
   uploadDir: string;
   llmClient?: AgentLlmClient | null;
+  limoraClient?: LimoraClient | null;
 }) {
   const tools = createChronofactAgentTools(chronofactClient);
 
   return {
-    async uploadFile(input: z.infer<typeof uploadFileSchema>) {
+    resolveAuth: (input: { organizationId?: string | null; requestContext?: AgentRequestContext } = {}) =>
+      resolveAgentAuth({
+        limoraClient,
+        requestedOrganizationId: input.organizationId,
+        requestContext: input.requestContext ?? {}
+      }),
+
+    async uploadFile(input: z.infer<typeof uploadFileSchema>, requestContext: AgentRequestContext = {}) {
       const parsed = uploadFileSchema.parse(input);
-      const conversation = store.ensureConversation(parsed.conversation_id);
+      const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
+      const organizationId = auth.organizationId;
+      const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", organizationId);
       const content = Buffer.from(parsed.content_base64, "base64");
       const sha256 = createHash("sha256").update(content).digest("hex");
       await mkdir(uploadDir, { recursive: true });
@@ -54,12 +83,34 @@ export function createAgentService({
 
       const file = store.addFile({
         conversationId: conversation.conversationId,
+        organizationId,
         filename: parsed.filename,
         sha256,
         size: content.byteLength,
         mimeType: parsed.mime_type ?? null,
         storagePath
       });
+      const documentMatch = store.matchDocumentForFile({
+        organizationId,
+        filename: file.filename,
+        sha256: file.sha256,
+        excludeFileId: file.fileId
+      });
+      if (documentMatch.type === "exact" && documentMatch.document && documentMatch.version) {
+        store.attachFileDocumentVersion({
+          fileId: file.fileId,
+          documentId: documentMatch.document.documentId,
+          documentVersionId: documentMatch.version.documentVersionId,
+          proofId: documentMatch.version.proofId
+        });
+      } else if (documentMatch.type === "same_name" && documentMatch.document) {
+        store.attachFileDocumentVersion({
+          fileId: file.fileId,
+          documentId: documentMatch.document.documentId,
+          documentVersionId: null
+        });
+      }
+      const storedFile = store.getFile(file.fileId) ?? file;
       const toolCall = store.addToolCall({
         conversationId: conversation.conversationId,
         toolName: "uploadFileContext",
@@ -69,29 +120,34 @@ export function createAgentService({
           size: content.byteLength
         },
         output: {
-          file_id: file.fileId,
-          filename: file.filename,
-          sha256: file.sha256,
-          size: file.size
+          file_id: storedFile.fileId,
+          filename: storedFile.filename,
+          sha256: storedFile.sha256,
+          size: storedFile.size,
+          document_match: toDocumentMatchContext(documentMatch)
         },
         status: "completed"
       });
 
       return {
         conversation_id: conversation.conversationId,
-        file_id: file.fileId,
-        sha256: file.sha256,
-        filename: file.filename,
-        size: file.size,
+        organization_id: organizationId,
+        identity: auth.identity,
+        file_id: storedFile.fileId,
+        sha256: storedFile.sha256,
+        filename: storedFile.filename,
+        size: storedFile.size,
+        document_match: toDocumentMatchContext(documentMatch),
         tool_call: toToolCallResponse(toolCall)
       };
     },
 
-    startRun(input: z.infer<typeof runSchema>) {
+    async startRun(input: z.infer<typeof runSchema>, requestContext: AgentRequestContext = {}) {
       const parsed = runSchema.parse(input);
-      const conversation = store.ensureConversation(parsed.conversation_id);
+      const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
+      const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", auth.organizationId);
       const conversationId = conversation.conversationId;
-      const file = resolveFile(store, conversationId, parsed.file_id);
+      const file = resolveFileForOrganization(store, conversationId, auth.organizationId, parsed.file_id);
       const action = inferAction(parsed.message);
       const userMessage = store.addMessage({
         conversationId,
@@ -125,6 +181,8 @@ export function createAgentService({
       setTimeout(() => {
         void completeRun({
           parsed,
+          requestContext,
+          organizationId: auth.organizationId,
           runId: run.runId,
           assistantMessageId: assistantMessage.messageId,
           conversationId
@@ -133,6 +191,8 @@ export function createAgentService({
 
       return {
         conversation_id: conversationId,
+        organization_id: auth.organizationId,
+        identity: auth.identity,
         run: toRunContext(run),
         user_message: toMessageContext(userMessage),
         assistant_message: toMessageContext(assistantMessage),
@@ -140,13 +200,16 @@ export function createAgentService({
       };
     },
 
-    async chat(input: z.infer<typeof chatSchema>) {
+    async chat(input: z.infer<typeof chatSchema>, requestContext: AgentRequestContext = {}) {
       const parsed = chatSchema.parse(input);
-      const conversation = store.ensureConversation(parsed.conversation_id);
+      const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
+      const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", auth.organizationId);
       const conversationId = conversation.conversationId;
-      const organizationId = parsed.organization_id ?? defaultOrganizationId;
-      const file = resolveFile(store, conversationId, parsed.file_id);
-      const plannedAction = await planAgentAction({ llmClient, message: parsed.message, file });
+      const organizationId = auth.organizationId;
+      const file = resolveFileForOrganization(store, conversationId, organizationId, parsed.file_id);
+      const plannedAction = wantsFileContentAnalysis(parsed.message)
+        ? "file_analysis"
+        : await planAgentAction({ llmClient, message: parsed.message, file });
       const userMessage = store.addMessage({
         conversationId,
         role: "user",
@@ -157,6 +220,54 @@ export function createAgentService({
       });
       maybeRenameConversation(store, conversation, parsed.message);
 
+      if (wantsLibraryOverview(parsed.message) && !parsed.file_id) {
+        const summary = buildLibrarySummary(store, organizationId);
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "listDocumentLibrary",
+          input: { organizationId },
+          output: summary,
+          status: "completed"
+        });
+        return reply(store, conversationId, librarySummaryReply(summary), {
+          user_message: toMessageContext(userMessage),
+          tool_calls: [toToolCallResponse(toolCall)],
+          library_summary: summary,
+          action: "library_summary",
+          action_required: null
+        });
+      }
+
+      if (wantsFileContentAnalysis(parsed.message)) {
+        if (!file) {
+          return reply(store, conversationId, "请先上传要分析的文件。", {
+            user_message: toMessageContext(userMessage),
+            action: "file_analysis",
+            action_required: null
+          });
+        }
+        const analysis = await analyzeCurrentFile({ file, llmClient });
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "analyzeFileContent",
+          input: {
+            file_id: file.fileId,
+            filename: file.filename,
+            sha256: file.sha256
+          },
+          output: analysis,
+          status: "completed"
+        });
+        return reply(store, conversationId, analysis.reply, {
+          user_message: toMessageContext(userMessage),
+          tool_calls: [toToolCallResponse(toolCall)],
+          file: toFileContext(file),
+          file_analysis: analysis,
+          action: "file_analysis",
+          action_required: null
+        });
+      }
+
       if (plannedAction === "preserve") {
         if (!file) {
           return reply(store, conversationId, "请先上传一个文件，我才能计算摘要并提交存证。", {
@@ -166,12 +277,12 @@ export function createAgentService({
           });
         }
         if (!parsed.confirmed_action) {
-          const versionTarget = resolveVersionPreserveTarget(store, file);
+          const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
           return reply(
             store,
             conversationId,
             versionTarget
-              ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。它会作为这个文件的新版本存证，请点击确认。`
+              ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。这看起来是《${versionTarget.document.displayName}》的新版本，请确认是否作为新版本存证。`
               : `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。如果要把这份文件正式存证，请点击确认存证。`,
             {
               user_message: toMessageContext(userMessage),
@@ -179,14 +290,14 @@ export function createAgentService({
               file: toFileContext(file),
               action_required: {
                 type: "confirm_preserve",
-                label: versionTarget ? "确认作为新版本存证" : "确认存证",
+                label: versionTarget ? "作为新版本存证" : "确认存证",
                 file_id: file.fileId
               }
             }
           );
         }
 
-        const { proof, toolCall } = await preserveFileVersionAware({ organizationId, file, conversationId });
+        const { proof, toolCall } = await preserveFileVersionAware({ organizationId, file, conversationId, requestHeaders: requestContext.authHeaders });
         const content = await improveReply({
           llmClient,
           fallback: preserveReply(proof),
@@ -211,17 +322,46 @@ export function createAgentService({
             action_required: null
           });
         }
-        const proofTarget = resolveProofTarget(store, file);
+        const proofTarget = resolveProofTarget(store, organizationId, file);
+        if (proofTarget.relation === "version_candidate") {
+          const verification = versionCandidateVerification(file, proofTarget);
+          const verifyCall = store.addToolCall({
+            conversationId,
+            toolName: "verifyEvidence",
+            input: {
+              organizationId,
+              sha256: file.sha256,
+              document_id: proofTarget.document?.documentId ?? null,
+              mode: "local_version_candidate"
+            },
+            output: verification,
+            status: "completed"
+          });
+          return reply(store, conversationId, verificationReply(verification, undefined), {
+            user_message: toMessageContext(userMessage),
+            tool_calls: [toToolCallResponse(verifyCall)],
+            verification,
+            file: toFileContext(store.getFile(file.fileId) ?? file),
+            action: "verify",
+            action_required: {
+              type: "confirm_preserve",
+              label: "作为新版本存证",
+              file_id: file.fileId
+            }
+          });
+        }
         const toolInput = {
           organizationId,
           sha256: file.sha256,
-          proofId: proofTarget.proofId
+          proofId: proofTarget.proofId,
+          versionId: proofTarget.versionId,
+          requestHeaders: requestContext.authHeaders
         };
         const verification = annotateVerification(await tools.verifyEvidence.execute!(toolInput, {} as any), proofTarget, file);
         const verifyCall = store.addToolCall({
           conversationId,
           toolName: "verifyEvidence",
-          input: toolInput,
+          input: sanitizeToolInput(toolInput),
           output: verification,
           status: "completed"
         });
@@ -273,20 +413,25 @@ export function createAgentService({
 
   async function completeRun({
     parsed,
+    requestContext,
+    organizationId,
     runId,
     assistantMessageId,
     conversationId
   }: {
     parsed: z.infer<typeof runSchema>;
+    requestContext: AgentRequestContext;
+    organizationId: string;
     runId: string;
     assistantMessageId: string;
     conversationId: string;
   }) {
     let plannedAction = inferAction(parsed.message);
     try {
-      const organizationId = parsed.organization_id ?? defaultOrganizationId;
-      const file = resolveFile(store, conversationId, parsed.file_id);
-      plannedAction = await planAgentAction({ llmClient, message: parsed.message, file });
+      const file = resolveFileForOrganization(store, conversationId, organizationId, parsed.file_id);
+      plannedAction = wantsFileContentAnalysis(parsed.message)
+        ? "file_analysis"
+        : await planAgentAction({ llmClient, message: parsed.message, file });
       const complete = (content: string, extra: Record<string, unknown> = {}) => {
         const toolCalls = Array.isArray(extra.tool_calls) ? (extra.tool_calls as any[]) : [];
         const metadata = {
@@ -309,6 +454,54 @@ export function createAgentService({
         return updated;
       };
 
+      if (wantsLibraryOverview(parsed.message) && !parsed.file_id) {
+        const summary = buildLibrarySummary(store, organizationId);
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "listDocumentLibrary",
+          input: { organizationId },
+          output: summary,
+          status: "completed"
+        });
+        complete(librarySummaryReply(summary), {
+          tool_calls: [toToolCallResponse(toolCall)],
+          library_summary: summary,
+          action: "library_summary",
+          action_required: null
+        });
+        return;
+      }
+
+      if (wantsFileContentAnalysis(parsed.message)) {
+        if (!file) {
+          complete("请先上传要分析的文件。", {
+            action: "file_analysis",
+            action_required: null
+          });
+          return;
+        }
+        const analysis = await analyzeCurrentFile({ file, llmClient });
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "analyzeFileContent",
+          input: {
+            file_id: file.fileId,
+            filename: file.filename,
+            sha256: file.sha256
+          },
+          output: analysis,
+          status: "completed"
+        });
+        complete(analysis.reply, {
+          tool_calls: [toToolCallResponse(toolCall)],
+          file: toFileContext(file),
+          file_analysis: analysis,
+          action: "file_analysis",
+          action_required: null
+        });
+        return;
+      }
+
       if (plannedAction === "preserve") {
         if (!file) {
           complete("请先上传一个文件，我才能计算摘要并提交存证。", {
@@ -318,22 +511,22 @@ export function createAgentService({
           return;
         }
         if (!parsed.confirmed_action) {
-          const versionTarget = resolveVersionPreserveTarget(store, file);
+          const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
           complete(versionTarget
-            ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。它会作为这个文件的新版本存证，请点击确认。`
+            ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。这看起来是《${versionTarget.document.displayName}》的新版本，请确认是否作为新版本存证。`
             : `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。如果要把这份文件正式存证，请点击确认存证。`, {
             action: "preserve",
             file: toFileContext(file),
             action_required: {
               type: "confirm_preserve",
-              label: versionTarget ? "确认作为新版本存证" : "确认存证",
+              label: versionTarget ? "作为新版本存证" : "确认存证",
               file_id: file.fileId
             }
           });
           return;
         }
 
-        const { proof, toolCall } = await preserveFileVersionAware({ organizationId, file, conversationId });
+        const { proof, toolCall } = await preserveFileVersionAware({ organizationId, file, conversationId, requestHeaders: requestContext.authHeaders });
         const content = await improveReply({
           llmClient,
           fallback: preserveReply(proof),
@@ -358,17 +551,46 @@ export function createAgentService({
           });
           return;
         }
-        const proofTarget = resolveProofTarget(store, file);
+        const proofTarget = resolveProofTarget(store, organizationId, file);
+        if (proofTarget.relation === "version_candidate") {
+          const verification = versionCandidateVerification(file, proofTarget);
+          const verifyCall = store.addToolCall({
+            conversationId,
+            toolName: "verifyEvidence",
+            input: {
+              organizationId,
+              sha256: file.sha256,
+              document_id: proofTarget.document?.documentId ?? null,
+              mode: "local_version_candidate"
+            },
+            output: verification,
+            status: "completed"
+          });
+          complete(verificationReply(verification, undefined), {
+            tool_calls: [toToolCallResponse(verifyCall)],
+            verification,
+            file: toFileContext(store.getFile(file.fileId) ?? file),
+            action: "verify",
+            action_required: {
+              type: "confirm_preserve",
+              label: "作为新版本存证",
+              file_id: file.fileId
+            }
+          });
+          return;
+        }
         const toolInput = {
           organizationId,
           sha256: file.sha256,
-          proofId: proofTarget.proofId
+          proofId: proofTarget.proofId,
+          versionId: proofTarget.versionId,
+          requestHeaders: requestContext.authHeaders
         };
         const verification = annotateVerification(await tools.verifyEvidence.execute!(toolInput, {} as any), proofTarget, file);
         const verifyCall = store.addToolCall({
           conversationId,
           toolName: "verifyEvidence",
-          input: toolInput,
+          input: sanitizeToolInput(toolInput),
           output: verification,
           status: "completed"
         });
@@ -434,41 +656,46 @@ export function createAgentService({
   async function preserveFileVersionAware({
     organizationId,
     file,
-    conversationId
+    conversationId,
+    requestHeaders
   }: {
     organizationId: string;
     file: StoredFile;
     conversationId: string;
+    requestHeaders?: RequestAuthHeaders;
   }) {
-    const versionTarget = resolveVersionPreserveTarget(store, file);
-    let toolName = versionTarget ? "preserveEvidenceVersion" : "preserveEvidence";
-    let toolInput = versionTarget
+    const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
+    let toolName = versionTarget?.assetId ? "preserveEvidenceVersion" : "preserveEvidence";
+    let toolInput = versionTarget?.assetId
       ? {
           organizationId,
           assetId: versionTarget.assetId,
           filename: file.filename,
-          sha256: file.sha256
+          sha256: file.sha256,
+          requestHeaders
         }
       : {
           organizationId,
           filename: file.filename,
-          sha256: file.sha256
+          sha256: file.sha256,
+          requestHeaders
         };
-    let mode: "preserve" | "version" = versionTarget ? "version" : "preserve";
+    let mode: "preserve" | "version" = versionTarget?.assetId ? "version" : "preserve";
     let rawProof: any;
     try {
-      rawProof = versionTarget
+      rawProof = versionTarget?.assetId
         ? await tools.preserveEvidenceVersion.execute!(toolInput as any, {} as any)
         : await tools.preserveEvidence.execute!(toolInput as any, {} as any);
     } catch (error) {
-      if (!versionTarget || !isMissingRemoteAsset(error)) {
+      if (!versionTarget?.assetId || !isMissingRemoteAsset(error)) {
         throw error;
       }
       toolName = "preserveEvidence";
       toolInput = {
         organizationId,
         filename: file.filename,
-        sha256: file.sha256
+        sha256: file.sha256,
+        requestHeaders
       };
       mode = "preserve";
       rawProof = await tools.preserveEvidence.execute!(toolInput as any, {} as any);
@@ -477,12 +704,26 @@ export function createAgentService({
     const toolCall = store.addToolCall({
       conversationId,
       toolName,
-      input: toolInput,
+      input: sanitizeToolInput(toolInput),
       output: proof,
       status: "completed"
     });
     const proofId = proof?.proof_id ?? null;
     store.setFileProof({ fileId: file.fileId, proofId });
+    const assetId = extractAssetId(proof) ?? versionTarget?.assetId ?? null;
+    const chronofactVersionId = extractVersionId(proof);
+    const documentVersion = store.createDocumentVersion({
+      organizationId,
+      fileId: file.fileId,
+      filename: file.filename,
+      sha256: file.sha256,
+      proofId,
+      assetId,
+      chronofactVersionId,
+      documentId: versionTarget?.document.documentId ?? file.documentId ?? null
+    });
+    proof.agent_document = toDocumentContext(documentVersion.document);
+    proof.agent_document_version = toDocumentVersionContext(documentVersion.version);
     store.addProofSnapshot({
       conversationId,
       fileId: file.fileId,
@@ -494,11 +735,65 @@ export function createAgentService({
   }
 }
 
+async function resolveAgentAuth({
+  limoraClient,
+  requestedOrganizationId,
+  requestContext
+}: {
+  limoraClient: LimoraClient | null;
+  requestedOrganizationId?: string | null;
+  requestContext: AgentRequestContext;
+}): Promise<ResolvedAgentAuth> {
+  if (!limoraClient) {
+    return {
+      organizationId: requestedOrganizationId ?? defaultOrganizationId,
+      identity: null,
+      session: null,
+      memberships: []
+    };
+  }
+
+  const session = await limoraClient.currentSession(requestContext.authHeaders);
+  const membership = requestedOrganizationId
+    ? session.memberships.find((entry) => entry.organizationId === requestedOrganizationId)
+    : session.memberships[0];
+  if (!membership) {
+    const error = new Error(
+      requestedOrganizationId
+        ? "当前账号不能访问这个组织空间。"
+        : "当前账号还没有可用的组织空间。"
+    ) as Error & { status?: number; code?: string };
+    error.status = requestedOrganizationId ? 403 : 404;
+    error.code = requestedOrganizationId ? "organization_access_denied" : "organization_required";
+    throw error;
+  }
+  return {
+    organizationId: membership.organizationId,
+    identity: session.identity,
+    session: session.session,
+    memberships: session.memberships
+  };
+}
+
 function resolveFile(store: AgentStore, conversationId: string, fileId?: string): StoredFile | null {
   if (fileId) {
     return store.getFile(fileId);
   }
   return store.latestFile(conversationId);
+}
+
+function resolveFileForOrganization(store: AgentStore, conversationId: string, organizationId: string, fileId?: string): StoredFile | null {
+  const file = resolveFile(store, conversationId, fileId);
+  if (!file) {
+    return null;
+  }
+  if (file.organizationId !== organizationId) {
+    const error = new Error("当前文件不属于这个组织空间。") as Error & { status?: number; code?: string };
+    error.status = 403;
+    error.code = "file_scope_denied";
+    throw error;
+  }
+  return file;
 }
 
 function reply(
@@ -541,6 +836,17 @@ function wantsPreserve(message: string) {
 
 function wantsVerify(message: string) {
   return /有没有存证|是否存证|存证了吗|验证|校验|核验|改过|篡改|是不是|是否|一样|对比|检查|看看|怎么样|什么问题|verify|check/i.test(message);
+}
+
+function wantsLibraryOverview(message: string) {
+  if (/这个文件|当前文件|这份文件|它/.test(message)) {
+    return false;
+  }
+  return /所有文件|全部文件|文件库|文件列表|存证情况|整体情况|汇总|统计|大数据|分析.*文件|文件.*分析|我们现在.*文件/.test(message);
+}
+
+function wantsFileContentAnalysis(message: string) {
+  return /分析.{0,8}(内容|正文|文本|材料|文件)|总结.{0,8}(内容|正文|文本|材料|文件)|提炼|摘要|讲讲.{0,8}内容|看看.{0,8}内容|这个文件.*(讲|说|写)了什么|这份文件.*(讲|说|写)了什么/.test(message);
 }
 
 function inferAction(message: string) {
@@ -597,7 +903,7 @@ async function planAgentAction({
 }
 
 function needsExplanation(verification: any) {
-  if (verification?.agent_classification === "possible_new_version") {
+  if (verification?.agent_classification === "version_candidate") {
     return false;
   }
   const result = verification?.result ?? verification?.status;
@@ -630,11 +936,11 @@ function preserveReply(proof: any) {
 
 function verificationReply(verification: any, explanation: any) {
   const result = verification?.result ?? verification?.status ?? "unknown";
-  if (verification?.agent_classification === "possible_new_version") {
-    const filename = verification?.agent_context?.filename;
-    return filename
-      ? `系统里已有 ${filename} 的旧版本。这次上传的内容不同，可以作为这个文件的新版本存证。`
-      : "系统里已有同名文件的旧版本。这次上传的内容不同，可以作为这个文件的新版本存证。";
+  if (verification?.agent_classification === "version_candidate") {
+    const name = verification?.agent_context?.document_name ?? verification?.agent_context?.filename;
+    return name
+      ? `这看起来是《${name}》的新版本，还没有为这个版本存证。`
+      : "这看起来是一个已有文档的新版本，还没有为这个版本存证。";
   }
   if (result === "mismatch") {
     return "这份文件和之前存证的版本不一样。它可能被改过，也可能是你上传了一个新版本。";
@@ -654,6 +960,117 @@ function verificationReply(verification: any, explanation: any) {
   return "我检查完了，但当前证明状态还不够明确，需要稍后重试或查看证明详情。";
 }
 
+function buildLibrarySummary(store: AgentStore, organizationId: string) {
+  const library = store.listDocumentLibrary(organizationId);
+  const documents = library.documents.map((entry) => {
+    const latest = entry.latestVersion;
+    return {
+      document_id: entry.document.documentId,
+      name: entry.document.displayName,
+      versions: entry.versions.length,
+      latest_version_no: latest?.versionNo ?? null,
+      latest_sha256: latest?.sha256 ?? null,
+      proof_id: latest?.proofId ?? null,
+      preserved: Boolean(latest?.proofId),
+      updated_at: entry.document.updatedAt
+    };
+  });
+  const unversionedFiles = library.unversionedFiles.map((file) => ({
+    file_id: file.fileId,
+    filename: file.filename,
+    sha256: file.sha256,
+    size: file.size,
+    proof_id: file.proofId,
+    document_id: file.documentId,
+    uploaded_at: file.createdAt
+  }));
+  const preservedDocuments = documents.filter((document) => document.preserved).length;
+  return {
+    organization_id: organizationId,
+    totals: {
+      documents: documents.length,
+      preserved_documents: preservedDocuments,
+      unpreserved_documents: documents.length - preservedDocuments,
+      versions: library.documents.reduce((count, entry) => count + entry.versions.length, 0),
+      uploaded_unversioned_files: unversionedFiles.length
+    },
+    documents,
+    unversioned_files: unversionedFiles
+  };
+}
+
+function librarySummaryReply(summary: ReturnType<typeof buildLibrarySummary>) {
+  const { documents, preserved_documents, unpreserved_documents, versions, uploaded_unversioned_files } = summary.totals;
+  if (documents === 0 && uploaded_unversioned_files === 0) {
+    return "这个空间里还没有文件记录。你可以先上传文件，我会帮你检查是否已有存证，也可以确认后正式存证。";
+  }
+
+  const lines = [
+    `这个空间里目前有 ${documents} 个已建档文件、${versions} 个存证版本。`,
+    `其中 ${preserved_documents} 个文件已有存证，${unpreserved_documents} 个文件还没有正式存证。`
+  ];
+  if (uploaded_unversioned_files > 0) {
+    lines.push(`另外还有 ${uploaded_unversioned_files} 个上传过但尚未进入版本链的文件。`);
+  }
+  const recent = summary.documents.slice(0, 5);
+  if (recent.length > 0) {
+    lines.push("最近文件：");
+    for (const document of recent) {
+      lines.push(`- ${document.name}: v${document.latest_version_no ?? "?"}，${document.preserved ? "已存证" : "未存证"}，${document.latest_sha256 ? shortSha(document.latest_sha256) : "无指纹"}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+async function analyzeCurrentFile({
+  file,
+  llmClient
+}: {
+  file: StoredFile;
+  llmClient: AgentLlmClient | null;
+}) {
+  const extraction = await extractFileContent(file);
+  const fallback = fileAnalysisFallback(extraction);
+  const generated = extraction.preview
+    ? await llmClient?.complete({
+        system: [
+          "你是 Chronofact 文件分析助手。",
+          "只根据提供的文件正文摘要内容，不编造文件没有出现的信息。",
+          "用普通中文回答，不展示完整 SHA-256、模型名或内部工具名。",
+          "最多三句话：先说文件主要内容，再说需要注意的点，最后说能做的下一步。"
+        ].join("\n"),
+        user: [
+          `文件名：${file.filename}`,
+          `文件大小：${formatBytes(file.size)}`,
+          `存证状态：${file.proofId ? "已有存证" : "尚未存证"}`,
+          `正文片段：\n${extraction.preview}`
+        ].join("\n")
+      })
+    : null;
+  return {
+    ...extraction,
+    reply: generated || fallback
+  };
+}
+
+function fileAnalysisFallback(extraction: FileContentAnalysis) {
+  const status = extraction.preview
+    ? `我已读取 ${extraction.filename} 的正文片段，内容大致是：${oneLine(extraction.preview).slice(0, 160)}${extraction.preview.length > 160 ? "..." : ""}`
+    : `我暂时不能读取 ${extraction.filename} 的正文内容。`;
+  const warning = extraction.warnings[0] ? ` ${extraction.warnings[0]}` : "";
+  return `${status}${warning}`;
+}
+
+function oneLine(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function formatBytes(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 function toToolCallResponse(row: any) {
   return {
     tool_call_id: row.toolCallId,
@@ -663,6 +1080,12 @@ function toToolCallResponse(row: any) {
     status: row.status,
     created_at: row.createdAt
   };
+}
+
+function sanitizeToolInput(input: any) {
+  if (!input || typeof input !== "object") return input;
+  const { requestHeaders, ...rest } = input;
+  return rest;
 }
 
 function toMessageContext(row: any) {
@@ -696,80 +1119,188 @@ function toRunContext(row: any) {
 function toFileContext(file: StoredFile) {
   return {
     file_id: file.fileId,
+    conversation_id: file.conversationId,
+    organization_id: file.organizationId,
     filename: file.filename,
     sha256: file.sha256,
     size: file.size,
-    proof_id: file.proofId
+    proof_id: file.proofId,
+    document_id: file.documentId,
+    document_version_id: file.documentVersionId
   };
 }
 
-function resolveProofTarget(store: AgentStore, file: StoredFile) {
+function toDocumentContext(document: any) {
+  if (!document) return null;
+  return {
+    document_id: document.documentId,
+    organization_id: document.organizationId,
+    display_name: document.displayName,
+    normalized_name: document.normalizedName,
+    latest_version_id: document.latestVersionId,
+    created_at: document.createdAt,
+    updated_at: document.updatedAt
+  };
+}
+
+function toDocumentVersionContext(version: any) {
+  if (!version) return null;
+  return {
+    document_version_id: version.documentVersionId,
+    document_id: version.documentId,
+    file_id: version.fileId,
+    sha256: version.sha256,
+    version_no: version.versionNo,
+    proof_id: version.proofId,
+    asset_id: version.assetId,
+    chronofact_version_id: version.chronofactVersionId,
+    created_at: version.createdAt
+  };
+}
+
+function toDocumentMatchContext(match: any) {
+  return {
+    type: match.type,
+    document_id: match.document?.documentId ?? null,
+    document: toDocumentContext(match.document),
+    latest_version: toDocumentVersionContext(match.version)
+  };
+}
+
+function resolveProofTarget(store: AgentStore, organizationId: string, file: StoredFile) {
   if (file.proofId) {
+    const version = file.documentVersionId ? store.getDocumentVersion(file.documentVersionId) : null;
     return {
       proofId: file.proofId,
+      versionId: version?.chronofactVersionId ?? null,
       relation: "current_file",
-      previousFile: null as StoredFile | null
+      previousFile: null as StoredFile | null,
+      document: file.documentId ? store.getDocument(file.documentId) : null,
+      version
     };
   }
-  const previousSameName = store.latestPreservedFileByFilename({
+  const match = store.matchDocumentForFile({
+    organizationId,
     filename: file.filename,
+    sha256: file.sha256,
     excludeFileId: file.fileId
   });
-  if (!previousSameName) {
+  if (match.type === "exact" && match.document && match.version) {
+    store.attachFileDocumentVersion({
+      fileId: file.fileId,
+      documentId: match.document.documentId,
+      documentVersionId: match.version.documentVersionId,
+      proofId: match.version.proofId
+    });
     return {
-      proofId: null,
-      relation: "digest_lookup",
-      previousFile: null as StoredFile | null
+      proofId: match.version.proofId,
+      versionId: match.version.chronofactVersionId,
+      relation: "exact_document_version",
+      previousFile: null as StoredFile | null,
+      document: match.document,
+      version: match.version
+    };
+  }
+  if (match.type === "same_name" && match.document) {
+    store.attachFileDocumentVersion({
+      fileId: file.fileId,
+      documentId: match.document.documentId,
+      documentVersionId: null
+    });
+    return {
+      proofId: match.version?.proofId ?? null,
+      versionId: match.version?.chronofactVersionId ?? null,
+      relation: "version_candidate",
+      previousFile: match.version ? store.getFile(match.version.fileId) : null,
+      document: match.document,
+      version: match.version
     };
   }
   return {
-    proofId: previousSameName.proofId,
-    relation: previousSameName.sha256 === file.sha256 ? "same_filename_same_digest" : "same_filename_different_digest",
-    previousFile: previousSameName
+    proofId: null,
+    versionId: null,
+    relation: "digest_lookup",
+    previousFile: null as StoredFile | null,
+    document: null,
+    version: null
   };
 }
 
-function resolveVersionPreserveTarget(store: AgentStore, file: StoredFile) {
+function resolveVersionPreserveTarget(store: AgentStore, organizationId: string, file: StoredFile) {
   if (file.proofId) {
     return null;
   }
-  const previousFile = store.latestPreservedFileByFilename({
-    filename: file.filename,
-    excludeFileId: file.fileId
-  });
-  if (!previousFile || previousFile.sha256 === file.sha256) {
+  const match = file.documentId
+    ? {
+        type: "same_name" as const,
+        document: store.getDocument(file.documentId),
+        version: store.latestDocumentVersion(file.documentId)
+      }
+    : store.matchDocumentForFile({
+        organizationId,
+        filename: file.filename,
+        sha256: file.sha256,
+        excludeFileId: file.fileId
+      });
+  if (!match.document || !match.version || match.version.sha256 === file.sha256) {
     return null;
   }
-  const snapshot = store.latestProofSnapshotForFile(previousFile.fileId);
-  const proof = snapshot ? JSON.parse(snapshot.snapshotJson) : null;
-  const assetId = proof?.asset?.asset_id
-    ?? proof?.version?.asset_id
-    ?? proof?.asset_version?.asset_id
-    ?? proof?.preservation_record?.asset_id
-    ?? null;
-  if (!assetId) {
-    return null;
+  if (!match.version.assetId) {
+    return {
+      assetId: null,
+      previousFile: store.getFile(match.version.fileId),
+      document: match.document
+    };
   }
   return {
-    assetId,
-    previousFile
+    assetId: match.version.assetId,
+    previousFile: store.getFile(match.version.fileId),
+    document: match.document
   };
 }
 
 function annotateVerification(verification: any, proofTarget: ReturnType<typeof resolveProofTarget>, file: StoredFile) {
-  if (proofTarget.relation !== "same_filename_different_digest" || (verification?.result ?? verification?.status) !== "mismatch") {
-    return verification;
-  }
   return {
     ...verification,
-    agent_classification: "possible_new_version",
+    agent_classification: classifyVerification(verification),
     agent_context: {
       filename: file.filename,
       file_id: file.fileId,
       sha256: file.sha256,
+      document_id: proofTarget.document?.documentId ?? null,
+      document_version_id: proofTarget.version?.documentVersionId ?? null,
       compared_to_file_id: proofTarget.previousFile?.fileId ?? null,
-      compared_to_sha256: proofTarget.previousFile?.sha256 ?? null,
-      reason: "same_filename_different_digest"
+      compared_to_sha256: proofTarget.previousFile?.sha256 ?? null
+    }
+  };
+}
+
+function classifyVerification(verification: any) {
+  const result = verification?.result ?? verification?.status;
+  const reason = verification?.proof?.failure_reason ?? verification?.failure_reason;
+  if (reason === "chain_unavailable") return "chain_unavailable";
+  if (result === "preserved" || result === "verified") return "preserved";
+  if (result === "not_preserved") return "not_preserved";
+  if (result === "mismatch") return "mismatch";
+  return result ?? "unknown";
+}
+
+function versionCandidateVerification(file: StoredFile, proofTarget: ReturnType<typeof resolveProofTarget>) {
+  return {
+    result: "not_preserved",
+    status: "not_preserved",
+    agent_classification: "version_candidate",
+    sha256: file.sha256,
+    agent_context: {
+      filename: file.filename,
+      file_id: file.fileId,
+      sha256: file.sha256,
+      document_id: proofTarget.document?.documentId ?? null,
+      document_name: proofTarget.document?.displayName ?? file.filename,
+      latest_version_no: proofTarget.version?.versionNo ?? null,
+      compared_to_file_id: proofTarget.previousFile?.fileId ?? null,
+      compared_to_sha256: proofTarget.version?.sha256 ?? proofTarget.previousFile?.sha256 ?? null,
+      reason: "same_name_different_digest"
     }
   };
 }
@@ -800,6 +1331,21 @@ function normalizePreserveResult(proof: any, mode: "preserve" | "version") {
       failure_reason: verificationResult?.failure_reason ?? null
     }
   };
+}
+
+function extractAssetId(proof: any) {
+  return proof?.asset?.asset_id
+    ?? proof?.version?.asset_id
+    ?? proof?.asset_version?.asset_id
+    ?? proof?.preservation_record?.asset_id
+    ?? null;
+}
+
+function extractVersionId(proof: any) {
+  return proof?.version?.version_id
+    ?? proof?.asset_version?.version_id
+    ?? proof?.preservation_record?.version_id
+    ?? null;
 }
 
 function isMissingRemoteAsset(error: unknown) {
@@ -894,7 +1440,7 @@ async function improveReply({
   if (task === "preserve" && (payload as any)?.agent_preserve_mode === "version") {
     return fallback;
   }
-  if (task === "verify" && (payload as any)?.verification?.agent_classification === "possible_new_version") {
+  if (task === "verify" && (payload as any)?.verification?.agent_classification === "version_candidate") {
     return fallback;
   }
   const generated = await llmClient?.complete({

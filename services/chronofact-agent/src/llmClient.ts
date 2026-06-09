@@ -14,7 +14,7 @@ export function createAgentLlmClient({
     (env.NOERYN_INFERENCE_API_KEY_ENV ? env[env.NOERYN_INFERENCE_API_KEY_ENV] : undefined) ||
     "";
   const model = env.CHRONOFACT_AGENT_LLM_MODEL || env.LLM_MODEL || stripProviderPrefix(env.NOERYN_INFERENCE_MODEL) || "";
-  const timeoutMs = Number(env.CHRONOFACT_AGENT_LLM_TIMEOUT_MS || 0) || 15000;
+  const timeoutMs = Number(env.CHRONOFACT_AGENT_LLM_TIMEOUT_MS || 0) || 30000;
 
   const configured = Boolean(baseUrl && apiKey && model);
 
