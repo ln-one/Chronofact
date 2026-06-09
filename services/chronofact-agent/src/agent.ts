@@ -842,7 +842,7 @@ function wantsLibraryOverview(message: string) {
   if (/这个文件|当前文件|这份文件|它/.test(message)) {
     return false;
   }
-  return /所有文件|全部文件|文件库|文件列表|存证情况|整体情况|汇总|统计|大数据|分析.*文件|文件.*分析|我们现在.*文件/.test(message);
+  return /所有文件|全部文件|文件库|文件列表|存证情况|整体情况|汇总|统计|大数据|分析.*文件|文件.*分析|我们现在.*文件|有没有文件.{0,8}(没|未|没有)存证|哪些文件.{0,8}(没|未|没有)存证|(没|未|没有)存证.{0,8}文件/.test(message);
 }
 
 function wantsFileContentAnalysis(message: string) {

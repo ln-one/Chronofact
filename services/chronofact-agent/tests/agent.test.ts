@@ -568,6 +568,46 @@ test("agent can summarize organization document library without a current file",
   assert.equal(completed.body.tool_calls.at(-1).tool_name, "listDocumentLibrary");
 });
 
+test("agent treats unpreserved-file questions as organization library queries", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_cross",
+    organization_id: "org_001",
+    title: "跨会话文件库"
+  });
+  const started = await postJson(`${baseUrl}/agent/runs`, {
+    conversation_id: "conv_cross",
+    organization_id: "org_001",
+    message: "帮我看看看有没有文件没有存证"
+  });
+  assert.equal(started.status, 202);
+
+  const completed = await waitForCompletedRun(`${baseUrl}/agent/conversations/conv_cross`);
+  const assistant = completed.body.messages.at(-1);
+  assert.equal(assistant.status, "completed");
+  assert.equal(assistant.metadata.action, "library_summary");
+  assert.match(assistant.content, /1 个已建档文件/);
+  assert.match(assistant.content, /report\.txt/);
+  assert.doesNotMatch(assistant.content, /请先上传/);
+});
+
 test("agent analyzes uploaded text file content without calling evidence verification", async (t) => {
   const llmCalls: any[] = [];
   const { baseUrl, cleanup } = await withAgent(t, {
