@@ -143,34 +143,36 @@ export function EvidenceConsole() {
   }
 
   return (
-    <ScrollArea className='h-full min-h-0'>
-      <div className='p-5 pb-24'>
+    <ScrollArea className='h-full min-h-0 w-full overflow-x-hidden'>
+      <div className='min-w-0 overflow-x-hidden p-5 pb-24'>
         <p className='mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground/50'>
           存证模块
         </p>
 
         <div className='mb-5'>
           <p className='mb-2 text-xs font-medium text-muted-foreground'>工作空间</p>
-          <div className='rounded-xl border bg-emerald-50/35 p-4 dark:bg-emerald-950/10'>
+          <div className='min-w-0 overflow-hidden rounded-xl border bg-emerald-50/35 p-4 dark:bg-emerald-950/10'>
             <div className='flex items-center gap-2.5'>
               <div className='flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-900/25'>
                 <Blocks className='h-4 w-4 text-emerald-600/75 dark:text-emerald-300/70' />
               </div>
-              <div>
-                <p className='text-sm font-medium'>区块链实验报告材料</p>
-                <p className='font-mono text-xs text-muted-foreground/50'>
+              <div className='min-w-0'>
+                <p className='truncate text-sm font-medium'>区块链实验报告材料</p>
+                <p className='truncate font-mono text-xs text-muted-foreground/50'>
                   {organizationId}
                 </p>
               </div>
             </div>
-            <div className='mt-3 flex gap-4 text-xs'>
-              <span className='flex items-center gap-1.5 text-emerald-600/80 dark:text-emerald-300/75'>
+            <div className='mt-3 flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-xs'>
+              <span className='flex min-w-0 items-center gap-1.5 text-emerald-600/80 dark:text-emerald-300/75'>
                 <span className='h-2 w-2 rounded-full bg-emerald-400/80' />
                 本地指纹计算
               </span>
-              <span className='flex items-center gap-1.5 text-amber-600/80 dark:text-amber-300/75'>
+              <span className='flex min-w-0 items-center gap-1.5 text-amber-600/80 dark:text-amber-300/75'>
                 <span className='h-2 w-2 rounded-full bg-amber-400/80' />
-                API: {apiBaseUrl.replace(/^https?:\/\//, '')}
+                <span className='min-w-0 truncate'>
+                  API: {apiBaseUrl.replace(/^https?:\/\//, '')}
+                </span>
               </span>
             </div>
           </div>
@@ -189,7 +191,7 @@ export function EvidenceConsole() {
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={onDrop}
-            className={`flex w-full flex-col items-center rounded-xl border border-dashed p-5 text-center transition ${
+            className={`flex w-full min-w-0 flex-col items-center overflow-hidden rounded-xl border border-dashed p-5 text-center transition ${
               isDragging
                 ? 'border-blue-300 bg-blue-50/60 dark:border-blue-800/50 dark:bg-blue-950/20'
                 : 'border-blue-100 bg-blue-50/20 hover:border-blue-200 hover:bg-blue-50/40 dark:border-blue-900/20 dark:bg-blue-950/10'
@@ -208,10 +210,10 @@ export function EvidenceConsole() {
                 <Upload className='h-5 w-5 text-blue-500/65 dark:text-blue-300/65' />
               )}
             </div>
-            <p className='text-sm text-muted-foreground/80'>
+            <p className='max-w-full break-words text-sm text-muted-foreground/80'>
               {selectedFile ? selectedFile.name : '点击选择文件，或拖拽文件到这里'}
             </p>
-            <p className='mt-1 text-xs text-muted-foreground/45'>
+            <p className='mt-1 max-w-full break-words text-xs text-muted-foreground/45'>
               {selectedFile
                 ? `${formatBytes(selectedFile.size)} · ${selectedFile.type}`
                 : '选择后会立即计算 SHA-256 指纹'}
@@ -228,7 +230,7 @@ export function EvidenceConsole() {
             {preserveSteps.map((step) => {
               const Icon = step.icon
               return (
-                <div key={step.label} className='flex items-start gap-3 rounded-xl border bg-background/60 p-3'>
+                <div key={step.label} className='flex min-w-0 items-start gap-3 overflow-hidden rounded-xl border bg-background/60 p-3'>
                   <div className='flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted'>
                     <Icon className='h-4 w-4 text-muted-foreground' />
                   </div>
@@ -249,7 +251,7 @@ export function EvidenceConsole() {
             <FileCheck className='h-4 w-4 text-muted-foreground' />
             <p className='text-sm font-medium'>本次文件状态</p>
           </div>
-          <div className='space-y-2 text-xs text-muted-foreground/70'>
+          <div className='min-w-0 space-y-2 text-xs text-muted-foreground/70'>
             <StatusRow label='文件' value={selectedFile?.name ?? '未选择'} />
             <StatusRow
               label='SHA-256'
@@ -319,9 +321,9 @@ function StatusRow({
   monospace?: boolean
 }) {
   return (
-    <div className='grid grid-cols-[4.5rem_minmax(0,1fr)] gap-3'>
+    <div className='grid min-w-0 grid-cols-[4.5rem_minmax(0,1fr)] gap-3'>
       <span>{label}</span>
-      <span className={`break-all text-right ${monospace ? 'font-mono' : ''}`}>
+      <span className={`min-w-0 break-all text-right ${monospace ? 'font-mono' : ''}`}>
         {value}
       </span>
     </div>
