@@ -8,9 +8,11 @@ type StoredThread = {
   remoteId: string
   status: 'regular' | 'archived'
   title?: string
+  pinned?: boolean
 }
 
 const STORAGE_KEY = 'chronofact:agent:threads'
+export const THREAD_LIST_CHANGED_EVENT = 'chronofact:agent:threads-changed'
 
 function loadThreads(): StoredThread[] {
   if (typeof window === 'undefined') return []
@@ -28,6 +30,7 @@ function loadThreads(): StoredThread[] {
 function saveThreads(threads: StoredThread[]) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(threads))
+  window.dispatchEvent(new Event(THREAD_LIST_CHANGED_EVENT))
 }
 
 function updateThread(
@@ -98,21 +101,20 @@ function createTitleStream(title: string) {
 export const chronofactThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
     return {
-      threads: loadThreads().map((thread) => ({
-        remoteId: thread.remoteId,
-        status: thread.status,
-        title: thread.title,
-      })),
+      threads: [...loadThreads()]
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+        .map((thread) => ({
+          remoteId: thread.remoteId,
+          status: thread.status,
+          title: thread.title,
+        })),
     }
   },
 
   async initialize(threadId: string) {
     const threads = loadThreads()
     if (!threads.some((thread) => thread.remoteId === threadId)) {
-      saveThreads([
-        { remoteId: threadId, status: 'regular' },
-        ...threads,
-      ])
+      saveThreads([{ remoteId: threadId, status: 'regular' }, ...threads])
     }
 
     return { remoteId: threadId, externalId: undefined }
@@ -153,4 +155,16 @@ export const chronofactThreadListAdapter: RemoteThreadListAdapter = {
     updateThread(remoteId, (thread) => ({ ...thread, title }))
     return createTitleStream(title)
   },
+}
+
+export function isThreadPinned(remoteId: string | undefined) {
+  if (!remoteId) return false
+  return loadThreads().some(
+    (thread) => thread.remoteId === remoteId && thread.pinned
+  )
+}
+
+export function togglePinnedThread(remoteId: string | undefined) {
+  if (!remoteId) return
+  updateThread(remoteId, (thread) => ({ ...thread, pinned: !thread.pinned }))
 }
