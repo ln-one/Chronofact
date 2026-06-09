@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { explainFact, explainRisk, explainTrace, listAssets } from "../services/chronofactApi";
+import {
+  defaultOrganizationId,
+  explainFact,
+  explainRisk,
+  explainTrace,
+  listOrganizationEvidence,
+} from "../services/chronofactApi";
+import { listCurrentMembershipWorkspaces } from "../services/limoraAuth";
 import { getStatusMeta } from "../lib/status";
 
 const modes = [
@@ -9,7 +16,9 @@ const modes = [
 ];
 
 export default function AiExplanation() {
-  const [assets, setAssets] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [workspaces, setWorkspaces] = useState([]);
+  const [organizationId, setOrganizationId] = useState(localStorage.getItem("lastWorkspaceId") || defaultOrganizationId);
   const [assetId, setAssetId] = useState("");
   const [versionId, setVersionId] = useState("");
   const [mode, setMode] = useState("risk");
@@ -18,23 +27,51 @@ export default function AiExplanation() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    listAssets()
-      .then((payload) => {
-        const nextAssets = payload.assets || [];
-        setAssets(nextAssets);
-        const first = nextAssets[0];
-        if (first) {
-          setAssetId(first.asset_id);
-          setVersionId(first.latest_version?.version_id || "");
+    loadWorkspaceOptions()
+      .then((nextWorkspaces) => {
+        setWorkspaces(nextWorkspaces);
+        const nextOrganizationId = preferredWorkspaceId(organizationId, nextWorkspaces);
+        setOrganizationId(nextOrganizationId);
+        if (nextOrganizationId) {
+          localStorage.setItem("lastWorkspaceId", nextOrganizationId);
+          return loadEvidenceRecords(nextOrganizationId);
         }
+        return [];
       })
+      .then(selectFirstRecord)
       .catch((caught) => setError(caught.message));
   }, []);
 
-  function changeAsset(nextAssetId) {
-    const asset = assets.find((item) => item.asset_id === nextAssetId);
-    setAssetId(nextAssetId);
-    setVersionId(asset?.latest_version?.version_id || "");
+  async function changeOrganization(nextOrganizationId) {
+    setOrganizationId(nextOrganizationId);
+    localStorage.setItem("lastWorkspaceId", nextOrganizationId);
+    setResult(null);
+    setError("");
+    try {
+      const nextRecords = await loadEvidenceRecords(nextOrganizationId);
+      selectFirstRecord(nextRecords);
+    } catch (caught) {
+      setError(caught.message);
+    }
+  }
+
+  function changeRecord(nextVersionId) {
+    const record = records.find((item) => item.version_id === nextVersionId);
+    setVersionId(nextVersionId);
+    setAssetId(record?.asset_id || "");
+    setResult(null);
+  }
+
+  async function loadEvidenceRecords(nextOrganizationId) {
+    const payload = await listOrganizationEvidence(nextOrganizationId);
+    return payload.evidence || [];
+  }
+
+  function selectFirstRecord(nextRecords) {
+    setRecords(nextRecords);
+    const first = nextRecords[0];
+    setAssetId(first?.asset_id || "");
+    setVersionId(first?.version_id || "");
     setResult(null);
   }
 
@@ -74,15 +111,30 @@ export default function AiExplanation() {
       <section className="rounded-2xl border border-[#dfe8e2] bg-white p-6 shadow-sm">
         <div className="grid gap-5 xl:grid-cols-[1fr_1fr_auto]">
           <label className="block">
-            <span className="text-base font-semibold text-slate-700">选择文件</span>
+            <span className="text-base font-semibold text-slate-700">选择项目空间</span>
             <select
-              value={assetId}
-              onChange={(event) => changeAsset(event.target.value)}
+              value={organizationId}
+              onChange={(event) => changeOrganization(event.target.value)}
               className="mt-1.5 h-12 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 text-base outline-none focus:ring-2 focus:ring-emerald-100"
             >
-              {assets.map((asset) => (
-                <option key={asset.asset_id} value={asset.asset_id}>
-                  {asset.title || asset.asset_id} ({asset.asset_id})
+              {workspaces.map((workspace) => (
+                <option key={workspace.workspace_id} value={workspace.workspace_id}>
+                  {workspace.title || workspace.workspace_id}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-base font-semibold text-slate-700">选择存证记录</span>
+            <select
+              value={versionId}
+              onChange={(event) => changeRecord(event.target.value)}
+              className="mt-1.5 h-12 w-full rounded-lg border border-[#dfe8e2] bg-white px-3 text-base outline-none focus:ring-2 focus:ring-emerald-100"
+            >
+              {records.map((record) => (
+                <option key={record.version_id} value={record.version_id}>
+                  {record.filename || record.asset_id} ({record.version_id})
                 </option>
               ))}
             </select>
@@ -108,7 +160,7 @@ export default function AiExplanation() {
             type="button"
             onClick={generate}
             disabled={loading || !assetId || (mode !== "trace" && !versionId)}
-            className="self-end rounded-lg bg-emerald-700 px-6 py-3.5 text-base font-semibold text-white hover:bg-emerald-600 disabled:cursor-wait disabled:bg-slate-300"
+            className="self-end rounded-lg bg-emerald-700 px-6 py-3.5 text-base font-semibold text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {loading ? "生成中..." : "生成解释"}
           </button>
@@ -129,6 +181,7 @@ export default function AiExplanation() {
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <section className="rounded-2xl border border-[#dfe8e2] bg-white p-5 shadow-sm">
           <p className="mb-4 text-lg font-semibold text-slate-900">解释输入</p>
+          <Info label="项目空间" value={organizationId || "暂无"} />
           <Info label="文件编号" value={assetId || "暂无"} />
           <Info label="版本编号" value={versionId || "版本链模式"} />
           <Info label="解释功能" value={endpointForMode(mode)} />
@@ -183,6 +236,18 @@ function endpointForMode(mode) {
     fact: "单版本解释",
     trace: "版本链解释",
   }[mode];
+}
+
+async function loadWorkspaceOptions() {
+  const workspaces = await listCurrentMembershipWorkspaces();
+  return workspaces;
+}
+
+function preferredWorkspaceId(currentId, workspaces) {
+  if (workspaces.some((workspace) => workspace.workspace_id === currentId)) {
+    return currentId;
+  }
+  return workspaces[0]?.workspace_id || "";
 }
 
 function Info({ label, value }) {

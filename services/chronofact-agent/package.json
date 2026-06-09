@@ -10,10 +10,13 @@
     "test": "node --test --import tsx tests/*.test.ts"
   },
   "dependencies": {
+    "@hono/node-server": "^2.0.4",
+    "@hono/zod-openapi": "^1.4.0",
     "@mastra/core": "^1.41.0",
     "better-sqlite3": "^12.10.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.25",
     "zod": "^4.1.13"
   },
   "devDependencies": {

@@ -68,6 +68,27 @@ export function getCurrentSession() {
   return requestLimora("/v1/sessions/current");
 }
 
+export async function listCurrentMembershipWorkspaces() {
+  const payload = await getCurrentSession();
+  const data = payload?.data ?? payload;
+  const memberships = data?.memberships ?? [];
+  return memberships
+    .map((membership) => {
+      const organization = membership.organization ?? {};
+      const organizationId = membership.organizationId || organization.id;
+      if (!organizationId) return null;
+      return {
+        workspace_id: organizationId,
+        title: organization.name || membership.organizationName || organizationId,
+        workspace_type: "organization",
+        status: "active",
+        source: "limora",
+        permissions: membership.permissions || [],
+      };
+    })
+    .filter(Boolean);
+}
+
 export function toDisplayUser(sessionPayload) {
   const data = sessionPayload?.data ?? sessionPayload;
   const user = data?.user ?? data?.identity ?? {};

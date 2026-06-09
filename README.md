@@ -204,6 +204,8 @@ git submodule update --init --recursive
 - [docs/ai-explanation-layer.md](docs/ai-explanation-layer.md)
 - [docs/chronestia-boundary.md](docs/chronestia-boundary.md)
 - [docs/course-chain-walkthrough.md](docs/course-chain-walkthrough.md)
+- [docs/evidence-workbench-design.md](docs/evidence-workbench-design.md)
+- [docs/future-roadmap.md](docs/future-roadmap.md)
 - [docs/contributing.md](docs/contributing.md)
 
 ## Local Backend Demo

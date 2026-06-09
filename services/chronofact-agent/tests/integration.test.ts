@@ -63,15 +63,44 @@ test("agent preserves and verifies through the real Chronofact API service", asy
     filename: "report-edited.txt",
     content_base64: Buffer.from("tampered").toString("base64")
   });
-  const mismatch = await postJson(`${agentUrl}/agent/chat`, {
+  const notPreserved = await postJson(`${agentUrl}/agent/chat`, {
     conversation_id: "conv_001",
     organization_id: "org_001",
     message: "验证这个文件",
     file_id: tampered.body.file_id
   });
-  assert.equal(mismatch.status, 200);
-  assert.equal(mismatch.body.verification.result, "mismatch");
-  assert.ok(mismatch.body.explanation);
+  assert.equal(notPreserved.status, 200);
+  assert.equal(notPreserved.body.verification.result, "not_preserved");
+  assert.equal(notPreserved.body.explanation, undefined);
+
+  const changedSameName = await postJson(`${agentUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("tampered").toString("base64")
+  });
+  const possibleVersion = await postJson(`${agentUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "验证这个文件",
+    file_id: changedSameName.body.file_id
+  });
+  assert.equal(possibleVersion.status, 200);
+  assert.equal(possibleVersion.body.verification.result, "mismatch");
+  assert.equal(possibleVersion.body.verification.agent_classification, "possible_new_version");
+  assert.match(possibleVersion.body.reply, /新版本/);
+
+  const preservedVersion = await postJson(`${agentUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: changedSameName.body.file_id,
+    confirmed_action: true
+  });
+  assert.equal(preservedVersion.status, 200);
+  assert.equal(preservedVersion.body.proof.agent_preserve_mode, "version");
+  assert.equal(preservedVersion.body.proof.version.version_no, 2);
+  assert.equal(preservedVersion.body.proof.version.previous_version_id, preserved.body.proof.version.version_id);
+  assert.equal(preservedVersion.body.tool_calls[0].tool_name, "preserveEvidenceVersion");
 });
 
 async function postJson(url: string, body: unknown) {

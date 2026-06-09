@@ -16,6 +16,19 @@ export function createChronofactAgentTools(client: ChronofactClient) {
     execute: async (input) => client.preserveEvidence(input)
   });
 
+  const preserveEvidenceVersion = createTool({
+    id: "preserveEvidenceVersion",
+    description: "Create a new version for an existing Chronofact asset and preserve its SHA-256 digest.",
+    inputSchema: z.object({
+      organizationId: z.string(),
+      assetId: z.string(),
+      filename: z.string(),
+      sha256: z.string(),
+      assetType: z.string().optional()
+    }),
+    execute: async (input) => client.preserveEvidenceVersion(input)
+  });
+
   const verifyEvidence = createTool({
     id: "verifyEvidence",
     description: "Verify a SHA-256 digest against Chronofact evidence records.",
@@ -39,5 +52,5 @@ export function createChronofactAgentTools(client: ChronofactClient) {
     execute: async (input) => client.explainEvidence(input)
   });
 
-  return { preserveEvidence, verifyEvidence, explainEvidence };
+  return { preserveEvidence, preserveEvidenceVersion, verifyEvidence, explainEvidence };
 }

@@ -313,7 +313,8 @@ function createHandler(orchestrator) {
           workspace_id: body.workspace_id,
           filename: body.filename,
           asset_type: body.asset_type,
-          content: body,
+          sha256: body.sha256,
+          content: body.sha256 ? undefined : body,
           scenario: body.scenario ?? scenario
         });
         return sendJson(response, 201, result);
@@ -375,10 +376,12 @@ function sendJson(response, statusCode, payload) {
 }
 
 function corsHeaders() {
+  const corsOrigin = process.env.CHRONOFACT_CORS_ORIGIN || "http://127.0.0.1:5173";
   return {
-    "access-control-allow-origin": "*",
+    "access-control-allow-origin": corsOrigin,
     "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type,authorization,cookie"
+    "access-control-allow-headers": "content-type,authorization,cookie",
+    "access-control-allow-credentials": "true"
   };
 }
 

@@ -8,6 +8,7 @@ import {
   preserveOrganizationEvidence,
 } from "../services/chronofactApi";
 import { fileToBase64, formatBytes, sha256File } from "../services/fileDigest";
+import { listCurrentMembershipWorkspaces } from "../services/limoraAuth";
 import { getStatusMeta } from "../lib/status";
 import { displayAssetType, displayStatus, displayValue, displayWorkspaceName } from "../lib/display";
 
@@ -38,8 +39,18 @@ export default function Submit() {
   const [duplicateDialog, setDuplicateDialog] = useState({ open: false, matches: [], body: null, organizationId: "" });
 
   useEffect(() => {
-    listWorkspaces()
-      .then((payload) => setWorkspaces(payload.workspaces || []))
+    loadWorkspaceOptions()
+      .then((nextWorkspaces) => {
+        setWorkspaces(nextWorkspaces);
+        setForm((current) => {
+          const nextOrganizationId = preferredWorkspaceId(current.organizationId, nextWorkspaces);
+          if (!nextOrganizationId || nextOrganizationId === current.organizationId) {
+            return current;
+          }
+          localStorage.setItem("lastWorkspaceId", nextOrganizationId);
+          return { ...current, organizationId: nextOrganizationId };
+        });
+      })
       .catch((caught) => setError(caught.message));
   }, []);
 
@@ -56,6 +67,10 @@ export default function Submit() {
     setStage("reading");
 
     try {
+      const organizationId = form.organizationId;
+      if (!organizationId || !workspaces.some((workspace) => workspace.workspace_id === organizationId)) {
+        throw new Error("当前账号没有可用的项目空间，请先登录已加入组织的账号。");
+      }
       const contentBase64 = await fileToBase64(file);
       setStage("submitting");
       const body = {
@@ -64,10 +79,9 @@ export default function Submit() {
         asset_type: form.assetType,
         content_base64: contentBase64,
       };
-      const organizationId = form.organizationId || defaultOrganizationId;
       if (!skipDuplicateCheck) {
-        const duplicate = await findOrganizationEvidenceByDigest(organizationId, fileHash || await sha256File(file));
-        if (duplicate.matches?.length > 0) {
+        const duplicate = await findDuplicateEvidence(organizationId, fileHash || await sha256File(file));
+        if (duplicate?.matches?.length > 0) {
           setDuplicateDialog({ open: true, matches: duplicate.matches, body, organizationId });
           setStage("idle");
           return;
@@ -88,8 +102,9 @@ export default function Submit() {
   const hashMatched = result ? result.sha256 === fileHash : null;
   const isStored = Boolean(result?.proof_id);
   const hasChainRecord = Boolean(result?.proof?.fact_id && result?.proof?.receipt_id);
-  const selectableWorkspaces = workspaces.filter((workspace) => workspace.workspace_id !== defaultOrganizationId);
+  const selectableWorkspaces = workspaces;
   const selectedWorkspace = selectableWorkspaces.find((workspace) => workspace.workspace_id === form.organizationId);
+  const hasWorkspace = Boolean(selectedWorkspace);
 
   async function continueDuplicateSubmit() {
     const pending = duplicateDialog;
@@ -132,12 +147,12 @@ export default function Submit() {
               >
                 <span>
                   <span className="block font-semibold text-slate-900">
-                    {selectedWorkspace ? displayWorkspaceName(selectedWorkspace) : "默认课程空间"}
+                    {selectedWorkspace ? displayWorkspaceName(selectedWorkspace) : "暂无可用项目空间"}
                   </span>
                   <span className="mt-0.5 block text-sm text-slate-500">
                     {selectedWorkspace
                       ? `${displayAssetType(selectedWorkspace.workspace_type)} · ${workspaceStatusLabel(selectedWorkspace.status)}`
-                      : "适用于没有单独创建课程空间的提交"}
+                      : "请登录已加入组织的账号，或请组织管理员授予 membership"}
                   </span>
                 </span>
                 <span className={`text-slate-400 transition ${workspacePickerOpen ? "rotate-180" : ""}`}>⌄</span>
@@ -271,7 +286,7 @@ export default function Submit() {
           <button
             type="button"
             onClick={handleSubmit}
-            disabled={!file || busy}
+            disabled={!file || busy || !hasWorkspace}
             className="mt-6 rounded-lg border border-[#ead89b] bg-gradient-to-r from-[#f7e6a9] via-[#f1d88d] to-[#e8c66f] px-5 py-2.5 text-sm font-semibold text-[#5a3908] shadow-sm shadow-amber-900/10 transition hover:from-[#faedbd] hover:via-[#f4df9c] hover:to-[#edcf7d] active:scale-[0.99] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
             {busy ? "正在提交..." : (
@@ -347,6 +362,49 @@ export default function Submit() {
       )}
     </div>
   );
+}
+
+async function loadWorkspaceOptions() {
+  const [workspaceResult, membershipResult] = await Promise.allSettled([
+    listWorkspaces(),
+    listCurrentMembershipWorkspaces(),
+  ]);
+  const demoWorkspaces = workspaceResult.status === "fulfilled" ? workspaceResult.value.workspaces || [] : [];
+  const limoraWorkspaces = membershipResult.status === "fulfilled" ? membershipResult.value || [] : [];
+  if (membershipResult.status === "fulfilled") {
+    return limoraWorkspaces;
+  }
+  return mergeWorkspaces(limoraWorkspaces, demoWorkspaces);
+}
+
+async function findDuplicateEvidence(organizationId, sha256) {
+  try {
+    return await findOrganizationEvidenceByDigest(organizationId, sha256);
+  } catch (error) {
+    if (error.status === 403 || error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function mergeWorkspaces(...groups) {
+  const byId = new Map();
+  groups.flat().forEach((workspace) => {
+    const id = workspace.workspace_id;
+    if (id && !byId.has(id)) {
+      byId.set(id, workspace);
+    }
+  });
+  return [...byId.values()];
+}
+
+function preferredWorkspaceId(currentId, workspaces) {
+  if (workspaces.some((workspace) => workspace.workspace_id === currentId)) {
+    return currentId;
+  }
+  const limoraWorkspace = workspaces.find((workspace) => workspace.source === "limora");
+  return limoraWorkspace?.workspace_id || workspaces[0]?.workspace_id || "";
 }
 
 function Meta({ label, value }) {

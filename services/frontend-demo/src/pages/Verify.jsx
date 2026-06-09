@@ -8,6 +8,7 @@ import {
   verifyOrganizationEvidence,
 } from "../services/chronofactApi";
 import { fileToBase64, formatBytes, sha256File } from "../services/fileDigest";
+import { listCurrentMembershipWorkspaces } from "../services/limoraAuth";
 import { getStatusMeta } from "../lib/status";
 import { displayStatus, displayValue, displayWorkspaceName } from "../lib/display";
 
@@ -32,7 +33,19 @@ export default function Verify() {
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
-    listWorkspaces().then((p) => setWorkspaces(p.workspaces || [])).catch(() => {});
+    loadWorkspaceOptions()
+      .then((nextWorkspaces) => {
+        setWorkspaces(nextWorkspaces);
+        setOrganizationId((current) => {
+          const nextOrganizationId = preferredWorkspaceId(current, nextWorkspaces);
+          if (!nextOrganizationId || nextOrganizationId === current) {
+            return current;
+          }
+          localStorage.setItem("lastWorkspaceId", nextOrganizationId);
+          return nextOrganizationId;
+        });
+      })
+      .catch(() => {});
   }, []);
 
   function handleWorkspaceChange(id) {
@@ -53,6 +66,10 @@ export default function Verify() {
 
   async function handleVerify() {
     if (!file) return;
+    if (!organizationId || !workspaces.some((workspace) => workspace.workspace_id === organizationId)) {
+      setError("当前账号没有可用的项目空间，请先登录已加入组织的账号。");
+      return;
+    }
     setLoading(true);
     setError("");
     setSearched(false);
@@ -87,6 +104,10 @@ export default function Verify() {
 
   async function searchDigest() {
     if (!digestQuery.trim()) return;
+    if (!organizationId || !workspaces.some((workspace) => workspace.workspace_id === organizationId)) {
+      setError("当前账号没有可用的项目空间，请先登录已加入组织的账号。");
+      return;
+    }
     setDigestLoading(true);
     setError("");
     try {
@@ -103,6 +124,10 @@ export default function Verify() {
   }
 
   async function loadOrganizationEvidence() {
+    if (!organizationId || !workspaces.some((workspace) => workspace.workspace_id === organizationId)) {
+      setError("当前账号没有可用的项目空间，请先登录已加入组织的账号。");
+      return;
+    }
     setDigestLoading(true);
     setError("");
     try {
@@ -122,6 +147,7 @@ export default function Verify() {
   const stored = verification?.result === "preserved" || verification?.result === "pending";
   const chainRecorded = Boolean(matchedRecord?.anchor_status || verification?.proof?.receipt_status);
   const status = verification?.result || matchedRecord?.receipt_status || "pending";
+  const hasWorkspace = workspaces.some((workspace) => workspace.workspace_id === organizationId);
 
   return (
     <div className="space-y-6">
@@ -159,7 +185,7 @@ export default function Verify() {
           <button
             type="button"
             onClick={handleVerify}
-            disabled={!file || loading}
+            disabled={!file || loading || !hasWorkspace}
             className="self-end rounded-lg border border-[#ead89b] bg-gradient-to-r from-[#f7e6a9] via-[#f1d88d] to-[#e8c66f] px-6 py-3 text-base font-semibold text-[#5a3908] shadow-sm shadow-amber-900/10 transition hover:from-[#faedbd] hover:via-[#f4df9c] hover:to-[#edcf7d] active:scale-[0.99] disabled:cursor-wait disabled:border-slate-200 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
             {loading ? "搜索中..." : "计算并校验存证"}
@@ -184,7 +210,7 @@ export default function Verify() {
           <button
             type="button"
             onClick={loadOrganizationEvidence}
-            disabled={digestLoading}
+            disabled={digestLoading || !hasWorkspace}
             className="rounded-lg border border-[#cbd8e6] bg-[#f3f7fb] px-4 py-2 text-sm font-semibold text-[#334965] transition hover:bg-[#e8f0f8] disabled:cursor-wait disabled:bg-slate-100"
           >
             查看本空间全部记录
@@ -207,7 +233,7 @@ export default function Verify() {
           <button
             type="button"
             onClick={searchDigest}
-            disabled={!digestQuery.trim() || digestLoading}
+            disabled={!digestQuery.trim() || digestLoading || !hasWorkspace}
             className="self-end rounded-lg border border-[#ead89b] bg-gradient-to-r from-[#f7e6a9] via-[#f1d88d] to-[#e8c66f] px-6 py-3 text-base font-semibold text-[#5a3908] shadow-sm shadow-amber-900/10 transition hover:from-[#faedbd] hover:via-[#f4df9c] hover:to-[#edcf7d] disabled:cursor-wait disabled:border-slate-200 disabled:bg-none disabled:bg-slate-200 disabled:text-slate-500"
           >
             {digestLoading ? "查询中..." : "查询指纹"}
@@ -281,6 +307,38 @@ export default function Verify() {
       </div>
     </div>
   );
+}
+
+async function loadWorkspaceOptions() {
+  const [workspaceResult, membershipResult] = await Promise.allSettled([
+    listWorkspaces(),
+    listCurrentMembershipWorkspaces(),
+  ]);
+  const demoWorkspaces = workspaceResult.status === "fulfilled" ? workspaceResult.value.workspaces || [] : [];
+  const limoraWorkspaces = membershipResult.status === "fulfilled" ? membershipResult.value || [] : [];
+  if (membershipResult.status === "fulfilled") {
+    return limoraWorkspaces;
+  }
+  return mergeWorkspaces(limoraWorkspaces, demoWorkspaces);
+}
+
+function mergeWorkspaces(...groups) {
+  const byId = new Map();
+  groups.flat().forEach((workspace) => {
+    const id = workspace.workspace_id;
+    if (id && !byId.has(id)) {
+      byId.set(id, workspace);
+    }
+  });
+  return [...byId.values()];
+}
+
+function preferredWorkspaceId(currentId, workspaces) {
+  if (workspaces.some((workspace) => workspace.workspace_id === currentId)) {
+    return currentId;
+  }
+  const limoraWorkspace = workspaces.find((workspace) => workspace.source === "limora");
+  return limoraWorkspace?.workspace_id || workspaces[0]?.workspace_id || "";
 }
 
 function StatusBadge({ status }) {

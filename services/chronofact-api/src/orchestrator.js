@@ -64,6 +64,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     asset_title,
     filename,
     asset_type = "lab_report",
+    sha256,
     content,
     scenario
   } = {}) {
@@ -72,6 +73,7 @@ export function createChronofactOrchestrator({ store, clients }) {
       asset_title,
       filename,
       asset_type,
+      sha256,
       content,
       scenario
     });
@@ -83,6 +85,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     asset_title,
     filename,
     asset_type = "lab_report",
+    sha256,
     content,
     scenario
   } = {}) {
@@ -90,17 +93,25 @@ export function createChronofactOrchestrator({ store, clients }) {
       throw new ChronofactError("invalid_request", "filename is required.", 400);
     }
 
-    const contentBuffer = toContentBuffer(content);
-    const sha256 = sha256Hex(contentBuffer);
+    const digest = digestFromEvidenceInput({ sha256, content });
     const identityContext = await clients.limora.resolveIdentity({ scenario });
     const uploadId = store.allocateUploadId();
-    const uploadRecord = await clients.dualweave.storeUpload({
-      uploadId,
-      filename,
-      content: contentBuffer,
-      sha256,
-      scenario
-    });
+    const uploadRecord = content === undefined
+      ? {
+          upload_id: uploadId,
+          storage_ref: null,
+          filename,
+          sha256: digest,
+          status: "metadata_recorded",
+          size: null
+        }
+      : await clients.dualweave.storeUpload({
+          uploadId,
+          filename,
+          content: toContentBuffer(content),
+          sha256: digest,
+          scenario
+        });
     store.saveUpload(uploadRecord);
 
     const assetVersion = store.createVersion({
@@ -109,7 +120,7 @@ export function createChronofactOrchestrator({ store, clients }) {
       workspaceId: workspace_id,
       assetTitle: asset_title,
       uploadRecord,
-      sha256,
+      sha256: digest,
       submitterId: identityContext.user_id
     });
 

@@ -28,6 +28,24 @@ export function createChronofactClient({
       });
     },
 
+    preserveEvidenceVersion(input: {
+      organizationId: string;
+      assetId: string;
+      filename: string;
+      assetType?: string;
+      sha256: string;
+    }) {
+      return requestJson(fetchImpl, `${normalizedBaseUrl}/assets/${encodeURIComponent(input.assetId)}/versions`, {
+        method: "POST",
+        body: {
+          workspace_id: input.organizationId,
+          filename: input.filename,
+          asset_type: input.assetType,
+          sha256: input.sha256
+        }
+      });
+    },
+
     verifyEvidence(input: { organizationId: string; sha256: string; proofId?: string | null; versionId?: string | null }) {
       return requestJson(fetchImpl, `${normalizedBaseUrl}/organizations/${encodeURIComponent(input.organizationId)}/evidence/verify`, {
         method: "POST",

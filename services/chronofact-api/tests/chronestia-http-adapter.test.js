@@ -4,13 +4,31 @@ import { createChronestiaHttpAdapter } from "../src/adapters/chronestiaHttpAdapt
 
 test("Chronestia HTTP adapter registers asset versions as Chronestia facts", async () => {
   let captured;
+  let createPayload;
+  const requests = [];
   const adapter = createChronestiaHttpAdapter({
     baseUrl: "http://chronestia.example.test/",
     fetchImpl: async (url, options) => {
+      requests.push({ url, method: options.method });
       captured = {
         url,
-        payload: JSON.parse(options.body)
+        payload: options.body ? JSON.parse(options.body) : null
       };
+      if (url.endsWith("/facts")) {
+        createPayload = captured.payload;
+      }
+      if (url.endsWith("/receipt/refresh")) {
+        return Response.json({
+          receipt: {
+            fact_id: "fact_123",
+            anchor_ref: "dev://fact_123",
+            anchor_status: "confirmed",
+            provider: "dev",
+            provider_payload: { transaction_hash: "0xdef" },
+            updated_at: "2026-05-13T00:00:02.000Z"
+          }
+        });
+      }
       return Response.json(
         {
           fact_id: "fact_123",
@@ -52,14 +70,17 @@ test("Chronestia HTTP adapter registers asset versions as Chronestia facts", asy
     }
   });
 
-  assert.equal(captured.url, "http://chronestia.example.test/facts");
-  assert.equal(captured.payload.subject.namespace, "chronofact");
-  assert.equal(captured.payload.fact.kind, "revised");
-  assert.equal(captured.payload.fact.previous_fact_id, "fact_prev");
-  assert.equal(captured.payload.evidence.digest, "abc123");
+  assert.equal(requests[0].url, "http://chronestia.example.test/facts");
+  assert.equal(requests[1].url, "http://chronestia.example.test/facts/fact_123/receipt/refresh");
+  assert.equal(captured.url, "http://chronestia.example.test/facts/fact_123/receipt/refresh");
+  assert.equal(createPayload.subject.namespace, "chronofact");
+  assert.equal(createPayload.fact.kind, "revised");
+  assert.equal(createPayload.fact.previous_fact_id, "fact_prev");
+  assert.equal(createPayload.evidence.digest, "abc123");
   assert.equal(result.fact_id, "fact_123");
   assert.equal(result.receipt_id, "dev://fact_123");
-  assert.equal(result.tx_hash, "0xabc");
+  assert.equal(result.anchor_status, "confirmed");
+  assert.equal(result.tx_hash, "0xdef");
 });
 
 test("Chronestia HTTP adapter maps verification states into Chronofact status vocabulary", async () => {
@@ -88,4 +109,3 @@ test("Chronestia HTTP adapter maps verification states into Chronofact status vo
   assert.equal(result.receipt_status, "valid");
   assert.equal(result.trace_status, "unsupported");
 });
-

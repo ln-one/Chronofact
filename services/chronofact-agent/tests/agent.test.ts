@@ -6,6 +6,38 @@ import { join } from "node:path";
 import test from "node:test";
 import { createChronofactAgentApp } from "../src/app.ts";
 
+test("created conversation is visible in conversation list", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t);
+  t.after(cleanup);
+
+  const created = await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_product",
+    title: "产品化会话"
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.conversation.conversation_id, "conv_product");
+
+  const listed = await getJson(`${baseUrl}/agent/conversations`);
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.conversations[0].conversation_id, "conv_product");
+});
+
+test("openapi document exposes agent routes", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t);
+  t.after(cleanup);
+
+  const spec = await getJson(`${baseUrl}/openapi.json`);
+
+  assert.equal(spec.status, 200);
+  assert.equal(spec.body.info.title, "Chronofact Agent API");
+  assert.ok(spec.body.paths["/health"]);
+  assert.ok(spec.body.paths["/agent/conversations"]);
+  assert.ok(spec.body.paths["/agent/conversations/{conversation_id}"]);
+  assert.ok(spec.body.paths["/agent/files"]);
+  assert.ok(spec.body.paths["/agent/chat"]);
+  assert.ok(spec.body.paths["/agent/runs"]);
+});
+
 test("file upload stores a stable sha256 in conversation context", async (t) => {
   const { baseUrl, cleanup } = await withAgent(t);
   t.after(cleanup);
@@ -22,6 +54,7 @@ test("file upload stores a stable sha256 in conversation context", async (t) => 
   assert.equal(uploaded.body.sha256, "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5");
   assert.equal(uploaded.body.filename, "report.txt");
   assert.equal(uploaded.body.size, 8);
+  assert.equal(uploaded.body.tool_call.tool_name, "uploadFileContext");
 });
 
 test("preserve requires explicit confirmation before calling Chronofact API", async (t) => {
@@ -32,7 +65,7 @@ test("preserve requires explicit confirmation before calling Chronofact API", as
   const file = await postJson(`${baseUrl}/agent/files`, {
     conversation_id: "conv_001",
     filename: "report.txt",
-    content_base64: Buffer.from("original").toString("base64")
+    content_base64: Buffer.from("missing").toString("base64")
   });
   const chat = await postJson(`${baseUrl}/agent/chat`, {
     conversation_id: "conv_001",
@@ -43,8 +76,62 @@ test("preserve requires explicit confirmation before calling Chronofact API", as
 
   assert.equal(chat.status, 200);
   assert.match(chat.body.reply, /确认/);
+  assert.equal(chat.body.file.file_id, file.body.file_id);
+  assert.equal(chat.body.action_required.type, "confirm_preserve");
   assert.equal(chat.body.tool_calls.length, 0);
   assert.equal(chronofact.requests.length, 0);
+});
+
+test("LLM tool call chooses the verification tool instead of keyword-only routing", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const llmCalls: any[] = [];
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        llmCalls.push(body);
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: "call_verify",
+                  type: "function",
+                  function: { name: "verifyEvidence", arguments: JSON.stringify({ reason: "user asked whether the file is preserved" }) }
+                }]
+              }
+            }]
+          });
+        }
+        return Response.json({ choices: [{ message: { content: "没有找到这份文件的存证记录。" } }] });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("missing").toString("base64")
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "麻烦你看一下这个材料有没有备案",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.verification.result, "not_preserved");
+  assert.equal(chat.body.tool_calls[0].tool_name, "verifyEvidence");
+  assert.ok(llmCalls[0].tools.some((tool: any) => tool.function.name === "verifyEvidence"));
 });
 
 test("confirmed preserve calls Chronofact API and records tool call output", async (t) => {
@@ -68,32 +155,120 @@ test("confirmed preserve calls Chronofact API and records tool call output", asy
   assert.equal(chat.status, 200);
   assert.equal(chat.body.proof.proof_id, "proof_001");
   assert.equal(chat.body.tool_calls[0].tool_name, "preserveEvidence");
+  assert.equal(chat.body.assistant_message.metadata.file_id, file.body.file_id);
+  assert.equal(chat.body.assistant_message.metadata.action, "preserve");
   assert.equal(chronofact.requests[0].path, "/organizations/org_001/evidence/preserve");
   assert.equal(chronofact.requests[0].body.sha256, file.body.sha256);
 });
 
-test("verify returns preserved and mismatch with explanation without hiding verification", async (t) => {
-  const chronofact = await withChronofactStub(t);
+test("stale version asset falls back to first preserve instead of failing forever", async (t) => {
+  const chronofact = await withChronofactStub(t, { staleVersionAsset: true });
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
   t.after(cleanup);
 
-  const file = await postJson(`${baseUrl}/agent/files`, {
+  const original = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "帮我存证这个文件",
+    file_id: original.body.file_id,
+    confirmed_action: true
+  });
+
+  const changedSameName = await postJson(`${baseUrl}/agent/files`, {
     conversation_id: "conv_001",
     filename: "report.txt",
     content_base64: Buffer.from("tampered").toString("base64")
   });
-  const chat = await postJson(`${baseUrl}/agent/chat`, {
+  const preserved = await postJson(`${baseUrl}/agent/chat`, {
     conversation_id: "conv_001",
     organization_id: "org_001",
-    message: "验证这个文件",
-    file_id: file.body.file_id
+    message: "确认存证",
+    file_id: changedSameName.body.file_id,
+    confirmed_action: true
   });
 
-  assert.equal(chat.status, 200);
-  assert.equal(chat.body.verification.result, "mismatch");
-  assert.equal(chat.body.explanation.risk_summary.failure_reason, "digest_mismatch");
-  assert.match(chat.body.reply, /不一样|不一致/);
-  assert.equal(chat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "verifyEvidence,explainEvidence");
+  assert.equal(preserved.status, 200);
+  assert.equal(preserved.body.proof.proof_id, "proof_001");
+  assert.equal(preserved.body.tool_calls[0].tool_name, "preserveEvidence");
+  assert.equal(chronofact.requests.at(-2)?.path, "/assets/asset_001/versions");
+  assert.equal(chronofact.requests.at(-1)?.path, "/organizations/org_001/evidence/preserve");
+});
+
+test("verification does not compare different filenames to the latest proof and classifies same-name digest changes", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const original = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "帮我存证这个文件",
+    file_id: original.body.file_id,
+    confirmed_action: true
+  });
+
+  const otherFile = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "other.txt",
+    content_base64: Buffer.from("tampered").toString("base64")
+  });
+  const otherChat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "这个文件存证了吗",
+    file_id: otherFile.body.file_id
+  });
+
+  assert.equal(otherChat.status, 200);
+  assert.equal(otherChat.body.verification.result, "not_preserved");
+  assert.equal(otherChat.body.explanation, undefined);
+  assert.equal(otherChat.body.file.filename, "other.txt");
+  assert.equal(otherChat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "verifyEvidence");
+  assert.equal(chronofact.requests.at(-1)?.body.proof_id, undefined);
+
+  const changedSameName = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("tampered").toString("base64")
+  });
+  const sameNameChat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "这个文件存证了吗",
+    file_id: changedSameName.body.file_id
+  });
+
+  assert.equal(sameNameChat.status, 200);
+  assert.equal(sameNameChat.body.verification.result, "mismatch");
+  assert.equal(sameNameChat.body.verification.agent_classification, "possible_new_version");
+  assert.equal(sameNameChat.body.explanation, undefined);
+  assert.match(sameNameChat.body.reply, /新版本/);
+  assert.equal(chronofact.requests.at(-1)?.body.proof_id, "proof_001");
+
+  const versionPreserve = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: changedSameName.body.file_id,
+    confirmed_action: true
+  });
+
+  assert.equal(versionPreserve.status, 200);
+  assert.equal(versionPreserve.body.proof.proof_id, "proof_002");
+  assert.equal(versionPreserve.body.proof.version.version_no, 2);
+  assert.equal(versionPreserve.body.tool_calls[0].tool_name, "preserveEvidenceVersion");
+  assert.equal(chronofact.requests.at(-1)?.path, "/assets/asset_001/versions");
+  assert.equal(chronofact.requests.at(-1)?.body.sha256, changedSameName.body.sha256);
 });
 
 test("conversation detail includes messages, files, tool calls, and proof snapshots", async (t) => {
@@ -119,12 +294,15 @@ test("conversation detail includes messages, files, tool calls, and proof snapsh
   assert.equal(detail.body.conversation.conversation_id, "conv_001");
   assert.equal(detail.body.files.length, 1);
   assert.equal(detail.body.messages.length, 2);
-  assert.equal(detail.body.tool_calls.length, 1);
+  assert.equal(detail.body.messages[0].metadata.file_id, file.body.file_id);
+  assert.equal(detail.body.current_file.file_id, file.body.file_id);
+  assert.equal(detail.body.tool_calls.length, 2);
+  assert.equal(detail.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "uploadFileContext,preserveEvidence");
   assert.equal(detail.body.proof_snapshots.length, 1);
 });
 
 test("configured LLM writes the user-facing mismatch explanation", async (t) => {
-  const chronofact = await withChronofactStub(t);
+  const chronofact = await withChronofactStub(t, { mismatchWithoutProof: true });
   const llmCalls: any[] = [];
   const { baseUrl, cleanup } = await withAgent(t, {
     chronofactApiUrl: chronofact.baseUrl,
@@ -160,9 +338,79 @@ test("configured LLM writes the user-facing mismatch explanation", async (t) => 
   assert.equal(chat.status, 200);
   assert.equal(chat.body.verification.result, "mismatch");
   assert.match(chat.body.reply, /^这份文件/);
-  assert.equal(llmCalls.length, 1);
-  const promptText = llmCalls[0].messages.map((message: { content: string }) => message.content).join("\n");
+  assert.equal(llmCalls.length, 2);
+  const promptText = llmCalls[1].messages.map((message: { content: string }) => message.content).join("\n");
   assert.match(promptText, /用户通常不懂区块链/);
+});
+
+test("LLM wording cannot contradict a not_preserved verification result", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        return Response.json({
+          choices: [{ message: { content: "文件内容与存证一致，但该存证记录已失效或过期。" } }]
+        });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "missing.txt",
+    content_base64: Buffer.from("missing").toString("base64")
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "这个文件有没有存证",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.verification.result, "not_preserved");
+  assert.match(chat.body.reply, /没有找到/);
+  assert.doesNotMatch(chat.body.reply, /一致|失效|过期/);
+});
+
+test("agent run persists a running assistant message for refresh recovery", async (t) => {
+  const chronofact = await withChronofactStub(t, { delayMs: 80 });
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  const started = await postJson(`${baseUrl}/agent/runs`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "验证这个文件",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(started.status, 202);
+  assert.equal(started.body.run.status, "running");
+  assert.equal(started.body.assistant_message.status, "running");
+
+  const running = await getJson(`${baseUrl}/agent/conversations/conv_001`);
+  assert.equal(running.body.runs[0].status, "running");
+  assert.equal(running.body.messages.at(-1).status, "running");
+  assert.match(running.body.messages.at(-1).content, /正在检查/);
+
+  const completed = await waitForCompletedRun(`${baseUrl}/agent/conversations/conv_001`);
+  assert.equal(completed.body.runs[0].status, "completed");
+  assert.equal(completed.body.messages.at(-1).status, "completed");
+  assert.match(completed.body.messages.at(-1).content, /一致/);
 });
 
 async function withAgent(
@@ -190,7 +438,10 @@ async function withAgent(
   return { baseUrl: `http://127.0.0.1:${port}`, cleanup };
 }
 
-async function withChronofactStub(t: { after: (fn: () => Promise<void>) => void }) {
+async function withChronofactStub(
+  t: { after: (fn: () => Promise<void>) => void },
+  options: { delayMs?: number; mismatchWithoutProof?: boolean; staleVersionAsset?: boolean } = {}
+) {
   const requests: Array<{ path: string; body: any }> = [];
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://localhost");
@@ -212,10 +463,52 @@ async function withChronofactStub(t: { after: (fn: () => Promise<void>) => void 
       });
     }
 
+    if (url.pathname === "/assets/asset_001/versions") {
+      if (options.staleVersionAsset) {
+        return sendJson(response, 404, { error: { message: "Asset asset_001 was not found." } });
+      }
+      return sendJson(response, 201, {
+        identity_context: { user_id: "user_001" },
+        asset_version: {
+          asset_id: "asset_001",
+          version_id: "ver_002",
+          version_no: 2,
+          previous_version_id: "ver_001",
+          filename: body.filename,
+          sha256: body.sha256
+        },
+        witness_record: {
+          provider: "chronestia",
+          fact_id: "fact_002",
+          receipt_id: "receipt_002",
+          anchor_status: "confirmed",
+          tx_hash: "0xdef"
+        },
+        preservation_record: {
+          preservation_id: "proof_002",
+          asset_id: "asset_001",
+          version_id: "ver_002"
+        },
+        verification_result: {
+          status: "verified",
+          receipt_status: "available",
+          trace_status: "available"
+        }
+      });
+    }
+
     if (url.pathname.endsWith("/evidence/verify")) {
-      const result = body.sha256 === "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5"
+      if (options.delayMs) {
+        await sleep(options.delayMs);
+      }
+      const originalSha = "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5";
+      const result = body.proof_id
+        ? body.sha256 === originalSha ? "preserved" : "mismatch"
+        : body.sha256 === originalSha
         ? "preserved"
-        : "mismatch";
+        : options.mismatchWithoutProof
+        ? "mismatch"
+        : "not_preserved";
       return sendJson(response, 200, {
         result,
         sha256: body.sha256,
@@ -277,4 +570,19 @@ async function readJson(request: IncomingMessage) {
 function sendJson(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
+}
+
+async function waitForCompletedRun(url: string) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const detail = await getJson(url);
+    if (detail.body.runs?.[0]?.status === "completed") {
+      return detail;
+    }
+    await sleep(20);
+  }
+  throw new Error("Run did not complete");
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }

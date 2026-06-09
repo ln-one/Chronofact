@@ -3,12 +3,12 @@ export const chronofactApiBaseUrl =
 export const defaultOrganizationId =
   import.meta.env.VITE_CHRONOFACT_ORGANIZATION_ID || "org_001";
 const organizationRequestCredentials =
-  import.meta.env.VITE_CHRONOFACT_WITH_CREDENTIALS === "true" ? "include" : undefined;
+  import.meta.env.VITE_CHRONOFACT_WITH_CREDENTIALS === "false" ? undefined : "include";
 
 export async function requestJson(path, options = {}) {
   const response = await fetch(`${chronofactApiBaseUrl}${path}`, {
     method: options.method || "GET",
-    credentials: options.credentials,
+    credentials: options.credentials ?? organizationRequestCredentials,
     headers: {
       "content-type": "application/json",
       ...(options.headers || {}),
@@ -18,7 +18,7 @@ export async function requestJson(path, options = {}) {
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(payload.error?.message || `存证核验服务暂时不可用，请稍后重试（${response.status}）`);
+    const error = new Error(toFriendlyApiError(payload, response.status));
     error.code = payload.error?.code;
     error.status = response.status;
     throw error;
@@ -159,4 +159,19 @@ function withQuery(path, params) {
   });
   const value = query.toString();
   return value ? `${path}?${value}` : path;
+}
+
+function toFriendlyApiError(payload, status) {
+  const code = payload.error?.code;
+  const message = payload.error?.message;
+  if (code === "organization_not_found" || message === "Organization not found") {
+    return "当前登录账号不属于这个项目空间，或缺少该空间的存证权限。请重新选择项目空间后再提交。";
+  }
+  if (code === "permission_denied") {
+    return "当前登录账号缺少执行该操作的存证权限。";
+  }
+  if (code === "unauthorized" || status === 401) {
+    return "请先登录后再进行存证或校验。";
+  }
+  return message || `存证核验服务暂时不可用，请稍后重试（${status}）`;
 }

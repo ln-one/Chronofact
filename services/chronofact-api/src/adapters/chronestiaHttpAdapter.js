@@ -7,6 +7,7 @@ export function createChronestiaHttpAdapter({
   timeoutMs = 5000
 }) {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, "Chronestia HTTP adapter");
+  const subjectRunId = `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 
   return {
     async registerVersion({ assetVersion, previousFactId, scenario }) {
@@ -18,7 +19,7 @@ export function createChronestiaHttpAdapter({
         );
       }
 
-      const payload = toChronestiaFactRequest({ assetVersion, previousFactId });
+      const payload = toChronestiaFactRequest({ assetVersion, previousFactId, subjectRunId });
       const result = await fetchJson({
         url: `${normalizedBaseUrl}/facts`,
         fetchImpl,
@@ -31,7 +32,26 @@ export function createChronestiaHttpAdapter({
         responseErrorCode: "witness_registration_failed"
       });
 
-      return toWitnessRecord(result, previousFactId);
+      const witnessRecord = toWitnessRecord(result, previousFactId);
+
+      try {
+        const refreshed = await refreshReceipt({
+          baseUrl: normalizedBaseUrl,
+          factId: witnessRecord.fact_id,
+          fetchImpl,
+          timeoutMs
+        });
+        return {
+          ...witnessRecord,
+          ...toWitnessRecord(refreshed, previousFactId),
+          fact_id: toWitnessRecord(refreshed, previousFactId).fact_id ?? witnessRecord.fact_id
+        };
+      } catch (error) {
+        if (error instanceof ChronofactError && error.code === "chain_unavailable") {
+          return witnessRecord;
+        }
+        throw error;
+      }
     },
 
     async verifyVersion({ assetVersion, scenario }) {
@@ -43,6 +63,13 @@ export function createChronestiaHttpAdapter({
       }
 
       try {
+        await refreshReceipt({
+          baseUrl: normalizedBaseUrl,
+          factId: assetVersion.fact_id,
+          fetchImpl,
+          timeoutMs
+        });
+
         const result = await fetchJson({
           url: `${normalizedBaseUrl}/facts/${encodeURIComponent(assetVersion.fact_id)}/verify`,
           fetchImpl,
@@ -64,12 +91,25 @@ export function createChronestiaHttpAdapter({
   };
 }
 
-function toChronestiaFactRequest({ assetVersion, previousFactId }) {
+async function refreshReceipt({ baseUrl, factId, fetchImpl, timeoutMs }) {
+  return fetchJson({
+    url: `${baseUrl}/facts/${encodeURIComponent(factId)}/receipt/refresh`,
+    fetchImpl,
+    timeoutMs,
+    method: "POST",
+    unavailableCode: "chain_unavailable",
+    unavailableMessage: "Chronestia HTTP service is unavailable",
+    responseErrorCode: "chain_unavailable",
+    responseErrorStatus: 503
+  });
+}
+
+function toChronestiaFactRequest({ assetVersion, previousFactId, subjectRunId }) {
   return {
     subject: {
       namespace: "chronofact",
       type: "experiment_asset",
-      id: assetVersion.asset_id
+      id: `${subjectRunId}:${assetVersion.asset_id}`
     },
     fact: {
       kind: assetVersion.version_no === 1 ? "registered" : "revised",
@@ -115,7 +155,7 @@ function toWitnessRecord(result, previousFactId) {
     fact_id: result.fact_id ?? fact.id,
     receipt_id: receipt.anchor_ref ?? receipt.fact_id ?? result.fact_id ?? fact.id,
     anchor_status: result.anchor_status ?? receipt.anchor_status ?? registration.status ?? "unknown",
-    tx_hash: receipt.provider_payload?.tx_hash ?? receipt.anchor_ref ?? null,
+    tx_hash: receipt.provider_payload?.tx_hash ?? receipt.provider_payload?.transaction_hash ?? receipt.anchor_ref ?? null,
     recorded_at: registration.accepted_at ?? receipt.updated_at ?? fact.created_at ?? new Date().toISOString(),
     previous_fact_id: fact.previous_fact_id ?? previousFactId ?? null,
     fact_digest: result.fact_digest ?? receipt.fact_digest ?? fact.fact_digest,
@@ -178,4 +218,3 @@ function chainUnavailableResult() {
     failure_reason: "chain_unavailable"
   };
 }
-
