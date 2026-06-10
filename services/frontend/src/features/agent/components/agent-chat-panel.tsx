@@ -44,6 +44,7 @@ export function AgentChatPanel({
   const [message, setMessage] = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
   const dragDepthRef = useRef(0)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
   const [showDropOverlay, setShowDropOverlay] = useState(false)
   const resetDropOverlay = useCallback(() => {
     dragDepthRef.current = 0
@@ -73,6 +74,12 @@ export function AgentChatPanel({
       window.removeEventListener('blur', resetDropOverlay)
     }
   }, [resetDropOverlay])
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      scrollToBottom(scrollContainerRef.current, messages.length > 0 ? 'smooth' : 'auto')
+    })
+  }, [messages, sending])
 
   function submit() {
     const text = message.trim()
@@ -106,7 +113,7 @@ export function AgentChatPanel({
       })}
     >
       <input {...getInputProps()} />
-      <div className='flex-1 overflow-y-auto'>
+      <div ref={scrollContainerRef} data-agent-scroll className='flex-1 overflow-y-auto'>
         {loading ? (
           <div className='flex h-full items-center justify-center text-sm text-muted-foreground'>
             正在恢复会话...
@@ -136,8 +143,7 @@ export function AgentChatPanel({
         size='icon'
         className='absolute bottom-36 left-1/2 z-10 h-9 w-9 -translate-x-1/2 rounded-full shadow-sm'
         onClick={() => {
-          const scroller = document.querySelector('[data-agent-scroll]')
-          scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
+          scrollToBottom(scrollContainerRef.current, 'smooth')
         }}
       >
         <ArrowDown className='h-4 w-4' />
@@ -216,6 +222,11 @@ export function AgentChatPanel({
 
 function hasDraggedFiles(event: DragEvent<HTMLElement>) {
   return Array.from(event.dataTransfer.types).includes('Files')
+}
+
+function scrollToBottom(scroller: HTMLDivElement | null, behavior: ScrollBehavior) {
+  if (!scroller) return
+  scroller.scrollTo({ top: scroller.scrollHeight, behavior })
 }
 
 function ConversationMessage({
