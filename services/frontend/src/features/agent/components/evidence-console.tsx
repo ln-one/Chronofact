@@ -300,17 +300,25 @@ export function EvidenceConsole({
                                   {version.proof_id ? '已存证' : '待存证'}
                                 </Badge>
                               </div>
-                              {file?.conversation_id && file.conversation_id !== currentConversationId ? (
+                              {file?.conversation_id ? (
                                 <Button
                                   type='button'
                                   variant='ghost'
                                   size='sm'
                                   className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
-                                  aria-label={`打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`}
-                                  title={`打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`}
+                                  aria-label={
+                                    file.conversation_id === currentConversationId
+                                      ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                      : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                  }
+                                  title={
+                                    file.conversation_id === currentConversationId
+                                      ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                      : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                  }
                                   onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                                 >
-                                  打开这个版本所在对话
+                                  {file.conversation_id === currentConversationId ? '选中这个版本' : '打开这个版本所在对话'}
                                 </Button>
                               ) : null}
                             </div>
@@ -364,17 +372,25 @@ export function EvidenceConsole({
                             待存证
                           </Badge>
                         </div>
-                        {file.conversation_id && file.conversation_id !== currentConversationId ? (
+                        {file.conversation_id ? (
                           <Button
                             type='button'
                             variant='ghost'
                             size='sm'
                             className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
-                            aria-label={`打开 ${file.filename} 所在对话并处理存证`}
-                            title={`打开 ${file.filename} 所在对话并处理存证`}
+                            aria-label={
+                              file.conversation_id === currentConversationId
+                                ? `选中 ${file.filename}`
+                                : `打开 ${file.filename} 所在对话并处理存证`
+                            }
+                            title={
+                              file.conversation_id === currentConversationId
+                                ? `选中 ${file.filename}`
+                                : `打开 ${file.filename} 所在对话并处理存证`
+                            }
                             onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                           >
-                            打开这个文件所在对话
+                            {file.conversation_id === currentConversationId ? '选中这个文件' : '打开这个文件所在对话'}
                           </Button>
                         ) : null}
                       </div>
