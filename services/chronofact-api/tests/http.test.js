@@ -224,6 +224,42 @@ test("HTTP organization evidence APIs enforce Limora session and permissions", a
   assert.equal(allowed.status, 201);
 });
 
+test("HTTP asset version API forwards Limora session and permissions", async (t) => {
+  const limoraUrl = await withLimoraServer(t, { session: true, allowed: true });
+  const baseUrl = await withServer(t, { CHRONOFACT_LIMORA_URL: limoraUrl });
+  const sessionHeaders = { cookie: "better-auth.session_token=test" };
+
+  const created = await postJson(
+    `${baseUrl}/assets`,
+    {
+      workspace_id: "org-1",
+      filename: "report-v1.pdf",
+      content_text: "v1"
+    },
+    sessionHeaders
+  );
+  assert.equal(created.status, 201);
+
+  const missingSession = await postJson(`${baseUrl}/assets/${created.body.asset_version.asset_id}/versions`, {
+    workspace_id: "org-1",
+    filename: "report-v2.pdf",
+    content_text: "v2"
+  });
+  assert.equal(missingSession.status, 401);
+
+  const v2 = await postJson(
+    `${baseUrl}/assets/${created.body.asset_version.asset_id}/versions`,
+    {
+      workspace_id: "org-1",
+      filename: "report-v2.pdf",
+      content_text: "v2"
+    },
+    sessionHeaders
+  );
+  assert.equal(v2.status, 201);
+  assert.equal(v2.body.asset_version.previous_version_id, created.body.asset_version.version_id);
+});
+
 test("HTTP organization evidence APIs return 403 and 404 from Limora authorization", async (t) => {
   const deniedLimoraUrl = await withLimoraServer(t, { session: true, allowed: false });
   const deniedBaseUrl = await withServer(t, { CHRONOFACT_LIMORA_URL: deniedLimoraUrl });

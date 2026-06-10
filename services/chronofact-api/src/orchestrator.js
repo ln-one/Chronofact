@@ -66,6 +66,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     asset_type = "lab_report",
     sha256,
     content,
+    requestHeaders,
     scenario
   } = {}) {
     return createVersion({
@@ -75,6 +76,7 @@ export function createChronofactOrchestrator({ store, clients }) {
       asset_type,
       sha256,
       content,
+      requestHeaders,
       scenario
     });
   }
@@ -87,6 +89,7 @@ export function createChronofactOrchestrator({ store, clients }) {
     asset_type = "lab_report",
     sha256,
     content,
+    requestHeaders,
     scenario
   } = {}) {
     if (!filename) {
@@ -94,7 +97,20 @@ export function createChronofactOrchestrator({ store, clients }) {
     }
 
     const digest = digestFromEvidenceInput({ sha256, content });
-    const identityContext = await clients.limora.resolveIdentity({ scenario });
+    const identityContext = await clients.limora.resolveIdentity({ requestHeaders, scenario });
+    if (workspace_id) {
+      await clients.limora.requirePermission({
+        organizationId: workspace_id,
+        permission: CHRONOFACT_EVIDENCE_PERMISSIONS.create,
+        requestHeaders,
+        scenario
+      });
+      store.ensureWorkspace({
+        workspaceId: workspace_id,
+        title: workspace_id,
+        ownerId: identityContext.user_id
+      });
+    }
     const uploadId = store.allocateUploadId();
     const uploadRecord = content === undefined
       ? {

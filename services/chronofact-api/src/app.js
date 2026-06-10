@@ -305,6 +305,7 @@ function createHandler(orchestrator, runtime) {
           filename: body.filename,
           asset_type: body.asset_type,
           content: body,
+          requestHeaders: request.headers,
           scenario: body.scenario ?? scenario
         });
         return sendJson(response, 201, result);
@@ -320,6 +321,7 @@ function createHandler(orchestrator, runtime) {
           asset_type: body.asset_type,
           sha256: body.sha256,
           content: body.sha256 ? undefined : body,
+          requestHeaders: request.headers,
           scenario: body.scenario ?? scenario
         });
         return sendJson(response, 201, result);
