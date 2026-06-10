@@ -102,12 +102,10 @@ function createTitleStream(title: string) {
 
 export const chronofactThreadListAdapter: RemoteThreadListAdapter = {
   async list() {
-    const currentWorkspaceId = getCurrentAgentWorkspaceId()
+    const workspaceId = getCurrentAgentWorkspaceId()
     return {
       threads: [...loadThreads()]
-        .filter((thread) =>
-          currentWorkspaceId ? thread.workspaceId === currentWorkspaceId : true
-        )
+        .filter((thread) => !workspaceId || thread.workspaceId === workspaceId)
         .sort((a, b) => Number(b.pinned) - Number(a.pinned))
         .map((thread) => ({
           remoteId: thread.remoteId,
