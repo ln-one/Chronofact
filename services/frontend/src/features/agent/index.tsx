@@ -294,9 +294,11 @@ export default function AgentWorkspace() {
             agentHealth={healthQuery.data ?? null}
             documentLibrary={libraryQuery.data ?? null}
             selectedFileId={selectedFileId}
+            currentConversationId={currentConversationId}
             busy={busy}
             pendingAction={pendingAction}
             onSelectFile={setSelectedFileId}
+            onOpenConversation={openConversation}
             onUploadFile={(file) => void handleUploadOnly(file)}
             onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
             onAnalyzeLibrary={() => void handleSend({

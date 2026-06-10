@@ -32,9 +32,11 @@ export function EvidenceConsole({
   agentHealth,
   documentLibrary,
   selectedFileId,
+  currentConversationId,
   busy,
   pendingAction,
   onSelectFile,
+  onOpenConversation,
   onUploadFile,
   onConfirmPreserve,
   onAnalyzeLibrary,
@@ -44,9 +46,11 @@ export function EvidenceConsole({
   agentHealth: AgentHealth | null
   documentLibrary: AgentDocumentLibrary | null
   selectedFileId: string | null
+  currentConversationId: string | null
   busy: boolean
   pendingAction: AgentActionRequired | null
   onSelectFile: (fileId: string) => void
+  onOpenConversation: (conversationId: string) => void
   onUploadFile: (file: File) => void
   onConfirmPreserve: (action: AgentActionRequired) => void
   onAnalyzeLibrary: () => void
@@ -345,6 +349,17 @@ export function EvidenceConsole({
                             待存证
                           </Badge>
                         </div>
+                        {file.conversation_id && file.conversation_id !== currentConversationId ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            size='sm'
+                            className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
+                            onClick={() => onOpenConversation(file.conversation_id!)}
+                          >
+                            进入原对话处理
+                          </Button>
+                        ) : null}
                       </div>
                     ))}
                     {documentLibrary.unversioned_files.length > 4 ? (
