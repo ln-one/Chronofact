@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import {
   AlertTriangle,
@@ -50,6 +51,8 @@ export function EvidenceConsole({
   onConfirmPreserve: (action: AgentActionRequired) => void
   onAnalyzeLibrary: () => void
 }) {
+  const [showAllDocuments, setShowAllDocuments] = useState(false)
+  const [showAllUnversionedFiles, setShowAllUnversionedFiles] = useState(false)
   const {
     getRootProps,
     getInputProps,
@@ -71,6 +74,12 @@ export function EvidenceConsole({
   const blockchainProof = chainProof(proofSnapshot)
   const relatedToolCalls = relatedTools(detail?.tool_calls ?? [], selectedFile)
   const chainStatus = runtimeChainStatus(agentHealth)
+  const visibleDocuments = showAllDocuments
+    ? documentLibrary?.documents ?? []
+    : documentLibrary?.documents.slice(0, 6) ?? []
+  const visibleUnversionedFiles = showAllUnversionedFiles
+    ? documentLibrary?.unversioned_files ?? []
+    : documentLibrary?.unversioned_files.slice(0, 4) ?? []
 
   return (
     <ScrollArea className='h-full min-h-0 w-full overflow-x-hidden'>
@@ -252,7 +261,7 @@ export function EvidenceConsole({
               </div>
               {documentLibrary.documents.length ? (
                 <div className='space-y-2'>
-                  {documentLibrary.documents.slice(0, 6).map((entry) => (
+                  {visibleDocuments.map((entry) => (
                     <details
                       key={entry.document.document_id}
                       className='group min-w-0 overflow-hidden rounded-xl border bg-background/60 px-3 py-2 text-sm'
@@ -294,9 +303,17 @@ export function EvidenceConsole({
                     </details>
                   ))}
                   {documentLibrary.documents.length > 6 ? (
-                    <p className='px-1 text-xs text-muted-foreground/60'>
-                      还有 {documentLibrary.documents.length - 6} 个文档未显示。点击“分析文件库”可让 Agent 汇总全部文件。
-                    </p>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      className='h-7 w-full justify-start px-1 text-xs text-muted-foreground'
+                      onClick={() => setShowAllDocuments((current) => !current)}
+                    >
+                      {showAllDocuments
+                        ? '收起文档列表'
+                        : `显示全部文档，另有 ${documentLibrary.documents.length - 6} 个未显示`}
+                    </Button>
                   ) : null}
                 </div>
               ) : (
@@ -310,7 +327,7 @@ export function EvidenceConsole({
                     另有 {documentLibrary.totals.uploaded_unversioned_files} 个上传过但尚未存证的文件。
                   </p>
                   <div className='space-y-2'>
-                    {documentLibrary.unversioned_files.slice(0, 4).map((file) => (
+                    {visibleUnversionedFiles.map((file) => (
                       <div
                         key={file.file_id}
                         className='min-w-0 overflow-hidden rounded-xl border border-dashed bg-background/40 px-3 py-2 text-sm'
@@ -331,9 +348,17 @@ export function EvidenceConsole({
                       </div>
                     ))}
                     {documentLibrary.unversioned_files.length > 4 ? (
-                      <p className='px-1 text-xs text-muted-foreground/60'>
-                        还有 {documentLibrary.unversioned_files.length - 4} 个待存证文件未显示。
-                      </p>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        className='h-7 w-full justify-start px-1 text-xs text-muted-foreground'
+                        onClick={() => setShowAllUnversionedFiles((current) => !current)}
+                      >
+                        {showAllUnversionedFiles
+                          ? '收起待存证文件'
+                          : `显示全部待存证文件，另有 ${documentLibrary.unversioned_files.length - 4} 个未显示`}
+                      </Button>
                     ) : null}
                   </div>
                 </div>
