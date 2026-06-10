@@ -1,11 +1,14 @@
-import { useRef, useState, type DragEvent } from 'react'
+import { useRef, useState, type DragEvent, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Blocks,
   CheckCircle2,
   ChevronDown,
   Clock,
-  Hash,
+  File,
+  FileArchive,
+  FileImage,
+  FileSpreadsheet,
   Loader2,
   Upload,
   XCircle,
@@ -18,6 +21,11 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import type { LimoraOrganization } from '@/features/auth/limora-api'
+import type {
+  AgentActionRequired,
+  AgentConversationDetail,
+} from '../agent-api'
 
 type UploadStatus =
   | 'idle'
@@ -55,7 +63,18 @@ const apiBaseUrl = (
 const organizationId =
   import.meta.env.VITE_CHRONOFACT_ORGANIZATION_ID || 'org_001'
 
-export function EvidenceConsole() {
+type EvidenceConsoleProps = {
+  detail?: AgentConversationDetail | null
+  organization?: LimoraOrganization | null
+  selectedFileId?: string | null
+  busy?: boolean
+  pendingAction?: AgentActionRequired | null
+  onSelectFile?: (fileId: string) => void
+  onUploadFile?: (file: File) => void
+  onConfirmPreserve?: (action: AgentActionRequired) => void
+}
+
+export function EvidenceConsole(_props: EvidenceConsoleProps = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selectedFile, setSelectedFile] = useState<SelectedFileState | null>(
     null
@@ -218,23 +237,27 @@ export function EvidenceConsole() {
                       void handleFile(event.target.files?.[0])
                     }
                   />
-                  <div className='mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20'>
-                    {status === 'hashing' ? (
-                      <Loader2 className='h-5 w-5 animate-spin text-blue-500/65 dark:text-blue-300/65' />
-                    ) : (
-                      <Upload className='h-5 w-5 text-blue-500/65 dark:text-blue-300/65' />
-                    )}
-                  </div>
-                  <p className='max-w-full break-words text-sm text-muted-foreground/80'>
-                    {selectedFile
-                      ? selectedFile.name
-                      : '点击选择文件，或拖拽文件到这里'}
-                  </p>
-                  <p className='mt-1 max-w-full break-words text-xs text-muted-foreground/45'>
-                    {selectedFile
-                      ? `${formatBytes(selectedFile.size)} · ${selectedFile.type}`
-                      : '选择后会立即计算 SHA-256 指纹'}
-                  </p>
+
+                  {selectedFile ? (
+                    <SelectedFilePreview file={selectedFile} status={status} />
+                  ) : (
+                    <>
+                      <div className='mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-900/20'>
+                        {status === 'hashing' ? (
+                          <Loader2 className='h-5 w-5 animate-spin text-blue-500/65 dark:text-blue-300/65' />
+                        ) : (
+                          <Upload className='h-5 w-5 text-blue-500/65 dark:text-blue-300/65' />
+                        )}
+                      </div>
+                      <p className='max-w-full break-words text-sm text-muted-foreground/80'>
+                        点击选择文件，或拖拽文件到这里
+                      </p>
+                      <p className='mt-1 max-w-full break-words text-xs text-muted-foreground/45'>
+                        选择后会立即计算 SHA-256 指纹
+                      </p>
+                    </>
+                  )}
+
                   <StatusBadge status={status} className='mt-2.5' />
                 </button>
               </div>
@@ -318,7 +341,7 @@ function ConsoleSection({
   icon: typeof Blocks
   open: boolean
   onOpenChange: (open: boolean) => void
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
@@ -383,11 +406,23 @@ function StatusBadge({
   const config = {
     idle: { label: '待选择', icon: Clock },
     hashing: { label: '计算中', icon: Loader2 },
-    ready: { label: '可提交', icon: Hash },
+    ready: { label: '可提交', icon: null },
     preserving: { label: '提交中', icon: Loader2 },
     preserved: { label: '已存证', icon: CheckCircle2 },
     error: { label: '失败', icon: XCircle },
-  } satisfies Record<UploadStatus, { label: string; icon: typeof Clock }>
+  } satisfies Record<
+    UploadStatus,
+    {
+      label: string
+      icon:
+        | typeof Clock
+        | typeof Loader2
+        | typeof CheckCircle2
+        | typeof XCircle
+        | null
+    }
+  >
+
   const Icon = config[status].icon
 
   return (
@@ -395,11 +430,51 @@ function StatusBadge({
       variant='secondary'
       className={`text-xs font-normal ${className ?? ''}`}
     >
-      <Icon
-        className={`mr-1 h-3 w-3 ${status === 'hashing' || status === 'preserving' ? 'animate-spin' : ''}`}
-      />
+      {Icon ? (
+        <Icon
+          className={`mr-1 h-3 w-3 ${status === 'hashing' || status === 'preserving' ? 'animate-spin' : ''}`}
+        />
+      ) : null}
       {config[status].label}
     </Badge>
+  )
+}
+
+function SelectedFilePreview({
+  file,
+  status,
+}: {
+  file: SelectedFileState
+  status: UploadStatus
+}) {
+  const presentation = getFileTypePresentation(file)
+  const Icon = presentation.icon
+
+  return (
+    <div className='flex w-full flex-col items-center'>
+      <div
+        className={`mb-3 flex h-14 w-14 items-center justify-center rounded-2xl ${presentation.containerClass}`}
+      >
+        {status === 'hashing' ? (
+          <Loader2 className='h-6 w-6 animate-spin text-blue-500/70 dark:text-blue-300/70' />
+        ) : (
+          <div className='flex flex-col items-center gap-0.5'>
+            <Icon className={`h-5 w-5 ${presentation.iconClass}`} />
+            <span
+              className={`text-[10px] font-semibold uppercase ${presentation.iconClass}`}
+            >
+              {presentation.shortLabel}
+            </span>
+          </div>
+        )}
+      </div>
+      <p className='max-w-full break-words text-base font-medium text-foreground/80'>
+        {file.name}
+      </p>
+      <p className='mt-1 max-w-full break-words text-xs text-muted-foreground/55'>
+        {formatBytes(file.size)} · {presentation.metaLabel}
+      </p>
+    </div>
   )
 }
 
@@ -424,4 +499,90 @@ function formatBytes(bytes: number) {
   )
   const value = bytes / 1024 ** index
   return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`
+}
+
+function getFileTypePresentation(file: Pick<SelectedFileState, 'name' | 'type'>) {
+  const extension = getFileExtension(file.name)
+  const mime = file.type.toLowerCase()
+
+  if (mime === 'application/pdf' || extension === 'pdf') {
+    return {
+      icon: File,
+      shortLabel: 'PDF',
+      metaLabel: 'PDF document',
+      containerClass: 'bg-rose-50 dark:bg-rose-950/20',
+      iconClass: 'text-rose-500 dark:text-rose-300',
+    }
+  }
+
+  if (
+    mime.includes('word') ||
+    mime.includes('officedocument.wordprocessingml') ||
+    extension === 'doc' ||
+    extension === 'docx'
+  ) {
+    return {
+      icon: File,
+      shortLabel: 'WORD',
+      metaLabel: 'Word document',
+      containerClass: 'bg-blue-50 dark:bg-blue-950/20',
+      iconClass: 'text-blue-500 dark:text-blue-300',
+    }
+  }
+
+  if (
+    mime.includes('sheet') ||
+    mime.includes('excel') ||
+    extension === 'xls' ||
+    extension === 'xlsx' ||
+    extension === 'csv'
+  ) {
+    return {
+      icon: FileSpreadsheet,
+      shortLabel: 'XLS',
+      metaLabel: 'Spreadsheet file',
+      containerClass: 'bg-emerald-50 dark:bg-emerald-950/20',
+      iconClass: 'text-emerald-600 dark:text-emerald-300',
+    }
+  }
+
+  if (
+    mime.startsWith('image/') ||
+    ['png', 'jpg', 'jpeg', 'webp'].includes(extension)
+  ) {
+    return {
+      icon: FileImage,
+      shortLabel: 'IMG',
+      metaLabel: 'Image file',
+      containerClass: 'bg-violet-50 dark:bg-violet-950/20',
+      iconClass: 'text-violet-500 dark:text-violet-300',
+    }
+  }
+
+  if (
+    ['zip', 'rar', '7z'].includes(extension) ||
+    mime.includes('zip') ||
+    mime.includes('compressed')
+  ) {
+    return {
+      icon: FileArchive,
+      shortLabel: 'ZIP',
+      metaLabel: 'Archive file',
+      containerClass: 'bg-amber-50 dark:bg-amber-950/20',
+      iconClass: 'text-amber-600 dark:text-amber-300',
+    }
+  }
+
+  return {
+    icon: File,
+    shortLabel: 'FILE',
+    metaLabel: file.type || 'Unknown type',
+    containerClass: 'bg-slate-100 dark:bg-slate-800/60',
+    iconClass: 'text-slate-500 dark:text-slate-300',
+  }
+}
+
+function getFileExtension(filename: string) {
+  const parts = filename.toLowerCase().split('.')
+  return parts.length > 1 ? parts[parts.length - 1] ?? '' : ''
 }
