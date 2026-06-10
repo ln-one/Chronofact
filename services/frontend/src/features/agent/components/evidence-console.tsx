@@ -244,10 +244,11 @@ export function EvidenceConsole({
           </div>
           {documentLibrary ? (
             <div className='space-y-2'>
-              <div className='grid grid-cols-3 gap-2 text-center text-xs'>
+              <div className='grid grid-cols-4 gap-2 text-center text-xs'>
                 <LibraryMetric label='文件' value={documentLibrary.totals.documents} />
                 <LibraryMetric label='版本' value={documentLibrary.totals.versions} />
                 <LibraryMetric label='已存证' value={documentLibrary.totals.preserved_documents} />
+                <LibraryMetric label='待处理' value={pendingLibraryItems(documentLibrary)} />
               </div>
               {documentLibrary.documents.length ? (
                 <div className='space-y-2'>
@@ -535,7 +536,11 @@ function fileVersionLabel(file: AgentFileContext) {
 
 function documentStatusLabel(version: AgentDocumentLibrary['documents'][number]['latest_version']) {
   if (!version) return '未存证'
-  return version.proof_id ? `v${version.version_no}` : '未存证'
+  return version.proof_id ? `v${version.version_no} 已存证` : `v${version.version_no} 待存证`
+}
+
+function pendingLibraryItems(library: AgentDocumentLibrary) {
+  return library.totals.unpreserved_documents + library.totals.uploaded_unversioned_files
 }
 
 function proofLabel(
