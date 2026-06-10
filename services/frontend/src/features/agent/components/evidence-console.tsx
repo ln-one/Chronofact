@@ -306,9 +306,11 @@ export function EvidenceConsole({
                                   variant='ghost'
                                   size='sm'
                                   className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
+                                  aria-label={`打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`}
+                                  title={`打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`}
                                   onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                                 >
-                                  进入对话
+                                  打开这个版本所在对话
                                 </Button>
                               ) : null}
                             </div>
@@ -368,9 +370,11 @@ export function EvidenceConsole({
                             variant='ghost'
                             size='sm'
                             className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
+                            aria-label={`打开 ${file.filename} 所在对话并处理存证`}
+                            title={`打开 ${file.filename} 所在对话并处理存证`}
                             onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                           >
-                            进入原对话处理
+                            打开这个文件所在对话
                           </Button>
                         ) : null}
                       </div>
