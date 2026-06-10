@@ -30,6 +30,8 @@ const pendingCardClass =
   'border-amber-200/80 bg-amber-50/35 dark:border-amber-900/60 dark:bg-amber-950/10'
 const pendingBadgeClass =
   'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+const selectedLibraryItemClass =
+  'ring-2 ring-emerald-500/35 ring-offset-1 ring-offset-background'
 
 export function EvidenceConsole({
   detail,
@@ -313,48 +315,53 @@ export function EvidenceConsole({
                         </summary>
                         <div className='mt-3 min-w-0 space-y-2 border-t pt-3'>
                           {entry.versions.length ? (
-                            entry.versions.slice().reverse().map(({ version, file }) => (
-                              <div
-                                key={version.document_version_id}
-                                className='min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
-                              >
-                                <div className='flex min-w-0 items-center justify-between gap-2'>
-                                  <span className='shrink-0 font-medium'>v{version.version_no}</span>
-                                  <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
-                                    {shortSha(version.sha256)}
-                                  </span>
-                                  <Badge
-                                    variant={version.proof_id ? 'secondary' : 'outline'}
-                                    className={`shrink-0 font-normal ${
-                                      version.proof_id ? '' : pendingBadgeClass
-                                    }`}
-                                  >
-                                    {version.proof_id ? '已存证' : '待存证'}
-                                  </Badge>
+                            entry.versions.slice().reverse().map(({ version, file }) => {
+                              const isSelected = file?.file_id === selectedFile?.file_id
+                              return (
+                                <div
+                                  key={version.document_version_id}
+                                  className={`min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs ${
+                                    isSelected ? selectedLibraryItemClass : ''
+                                  }`}
+                                >
+                                  <div className='flex min-w-0 items-center justify-between gap-2'>
+                                    <span className='shrink-0 font-medium'>v{version.version_no}</span>
+                                    <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
+                                      {shortSha(version.sha256)}
+                                    </span>
+                                    <Badge
+                                      variant={version.proof_id ? 'secondary' : 'outline'}
+                                      className={`shrink-0 font-normal ${
+                                        version.proof_id ? '' : pendingBadgeClass
+                                      }`}
+                                    >
+                                      {version.proof_id ? '已存证' : '待存证'}
+                                    </Badge>
+                                  </div>
+                                  {file?.conversation_id ? (
+                                    <Button
+                                      type='button'
+                                      variant='ghost'
+                                      size='sm'
+                                      className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
+                                      aria-label={
+                                        file.conversation_id === currentConversationId
+                                          ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                          : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                      }
+                                      title={
+                                        file.conversation_id === currentConversationId
+                                          ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                          : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                      }
+                                      onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
+                                    >
+                                      {file.conversation_id === currentConversationId ? '选中这个版本' : '打开这个版本所在对话'}
+                                    </Button>
+                                  ) : null}
                                 </div>
-                                {file?.conversation_id ? (
-                                  <Button
-                                    type='button'
-                                    variant='ghost'
-                                    size='sm'
-                                    className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
-                                    aria-label={
-                                      file.conversation_id === currentConversationId
-                                        ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
-                                        : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
-                                    }
-                                    title={
-                                      file.conversation_id === currentConversationId
-                                        ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
-                                        : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
-                                    }
-                                    onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
-                                  >
-                                    {file.conversation_id === currentConversationId ? '选中这个版本' : '打开这个版本所在对话'}
-                                  </Button>
-                                ) : null}
-                              </div>
-                            ))
+                              )
+                            })
                           ) : (
                             <p className='text-xs text-muted-foreground/60'>还没有版本记录。</p>
                           )}
@@ -387,50 +394,55 @@ export function EvidenceConsole({
                     另有 {documentLibrary.totals.uploaded_unversioned_files} 个上传过但尚未存证的文件。
                   </p>
                   <div className='space-y-2'>
-                    {visibleUnversionedFiles.map((file) => (
-                      <div
-                        key={file.file_id}
-                        className={`min-w-0 overflow-hidden rounded-xl border border-dashed px-3 py-2 text-sm ${pendingCardClass}`}
-                      >
-                        <div className='flex min-w-0 items-start justify-between gap-2'>
-                          <div className='min-w-0'>
-                            <p className='truncate font-medium' title={file.filename}>
-                              {compactFilename(file.filename)}
-                            </p>
-                            <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
-                              {shortSha(file.sha256)}
-                            </p>
+                    {visibleUnversionedFiles.map((file) => {
+                      const isSelected = file.file_id === selectedFile?.file_id
+                      return (
+                        <div
+                          key={file.file_id}
+                          className={`min-w-0 overflow-hidden rounded-xl border border-dashed px-3 py-2 text-sm ${pendingCardClass} ${
+                            isSelected ? selectedLibraryItemClass : ''
+                          }`}
+                        >
+                          <div className='flex min-w-0 items-start justify-between gap-2'>
+                            <div className='min-w-0'>
+                              <p className='truncate font-medium' title={file.filename}>
+                                {compactFilename(file.filename)}
+                              </p>
+                              <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
+                                {shortSha(file.sha256)}
+                              </p>
+                            </div>
+                            <Badge
+                              variant='outline'
+                              className={`shrink-0 font-normal ${pendingBadgeClass}`}
+                            >
+                              待存证
+                            </Badge>
                           </div>
-                          <Badge
-                            variant='outline'
-                            className={`shrink-0 font-normal ${pendingBadgeClass}`}
-                          >
-                            待存证
-                          </Badge>
+                          {file.conversation_id ? (
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='sm'
+                              className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
+                              aria-label={
+                                file.conversation_id === currentConversationId
+                                  ? `选中 ${file.filename}`
+                                  : `打开 ${file.filename} 所在对话并处理存证`
+                              }
+                              title={
+                                file.conversation_id === currentConversationId
+                                  ? `选中 ${file.filename}`
+                                  : `打开 ${file.filename} 所在对话并处理存证`
+                              }
+                              onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
+                            >
+                              {file.conversation_id === currentConversationId ? '选中这个文件' : '打开这个文件所在对话'}
+                            </Button>
+                          ) : null}
                         </div>
-                        {file.conversation_id ? (
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='sm'
-                            className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
-                            aria-label={
-                              file.conversation_id === currentConversationId
-                                ? `选中 ${file.filename}`
-                                : `打开 ${file.filename} 所在对话并处理存证`
-                            }
-                            title={
-                              file.conversation_id === currentConversationId
-                                ? `选中 ${file.filename}`
-                                : `打开 ${file.filename} 所在对话并处理存证`
-                            }
-                            onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
-                          >
-                            {file.conversation_id === currentConversationId ? '选中这个文件' : '打开这个文件所在对话'}
-                          </Button>
-                        ) : null}
-                      </div>
-                    ))}
+                      )
+                    })}
                     {documentLibrary.unversioned_files.length > 4 ? (
                       <Button
                         type='button'
