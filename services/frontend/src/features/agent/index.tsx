@@ -36,13 +36,18 @@ const queryKeys = {
 }
 
 const agentWorkspacePanelIds = ['agent-chat', 'evidence-console']
+const agentWorkspaceDefaultLayout = {
+  'agent-chat': 67,
+  'evidence-console': 33,
+}
 
 export default function AgentWorkspace() {
   const queryClient = useQueryClient()
   const panelLayout = useDefaultLayout({
-    id: 'chronofact-agent-workspace',
+    id: 'chronofact-workspace-v6',
     panelIds: agentWorkspacePanelIds,
   })
+  const defaultLayout = panelLayout.defaultLayout ?? agentWorkspaceDefaultLayout
   const bootstrappedRef = useRef(false)
   const activeOrganizationRef = useRef<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<
@@ -339,15 +344,16 @@ export default function AgentWorkspace() {
           </div>
 
           <ResizablePanelGroup
-            id='chronofact-agent-workspace'
-            defaultLayout={panelLayout.defaultLayout}
+            id='chronofact-workspace-v6'
+            defaultLayout={defaultLayout}
             onLayoutChanged={panelLayout.onLayoutChanged}
             orientation='horizontal'
             className='h-full min-h-0 min-w-0 overflow-hidden'
           >
             <ResizablePanel
               id='agent-chat'
-              minSize='42rem'
+              defaultSize='67%'
+              minSize='45%'
               className='min-h-0 min-w-0 overflow-hidden'
             >
               <div className='relative h-full min-h-0 min-w-0 overflow-hidden bg-background'>
@@ -365,17 +371,13 @@ export default function AgentWorkspace() {
               </div>
             </ResizablePanel>
 
-            <ResizableHandle
-              withHandle
-              aria-label='调整文件与证明面板宽度'
-              className='bg-border/60 hover:bg-emerald-500/20 active:bg-emerald-500/30'
-            />
+            <ResizableHandle aria-label='调整文件与证明面板宽度' />
 
             <ResizablePanel
               id='evidence-console'
-              defaultSize='24rem'
-              minSize='18rem'
-              maxSize='36rem'
+              defaultSize='33%'
+              minSize='20%'
+              maxSize='55%'
               className='min-h-0 min-w-0 overflow-hidden'
             >
               <div className='h-full min-h-0 min-w-0 overflow-hidden bg-muted/20'>
