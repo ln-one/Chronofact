@@ -286,18 +286,31 @@ export function EvidenceConsole({
                       </summary>
                       <div className='mt-3 min-w-0 space-y-2 border-t pt-3'>
                         {entry.versions.length ? (
-                          entry.versions.slice().reverse().map(({ version }) => (
+                          entry.versions.slice().reverse().map(({ version, file }) => (
                             <div
                               key={version.document_version_id}
-                              className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
+                              className='min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
                             >
-                              <span className='shrink-0 font-medium'>v{version.version_no}</span>
-                              <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
-                                {shortSha(version.sha256)}
-                              </span>
-                              <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
-                                {version.proof_id ? '已存证' : '待存证'}
-                              </Badge>
+                              <div className='flex min-w-0 items-center justify-between gap-2'>
+                                <span className='shrink-0 font-medium'>v{version.version_no}</span>
+                                <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
+                                  {shortSha(version.sha256)}
+                                </span>
+                                <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
+                                  {version.proof_id ? '已存证' : '待存证'}
+                                </Badge>
+                              </div>
+                              {file?.conversation_id && file.conversation_id !== currentConversationId ? (
+                                <Button
+                                  type='button'
+                                  variant='ghost'
+                                  size='sm'
+                                  className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
+                                  onClick={() => onOpenConversation(file.conversation_id!)}
+                                >
+                                  进入对话
+                                </Button>
+                              ) : null}
                             </div>
                           ))
                         ) : (
