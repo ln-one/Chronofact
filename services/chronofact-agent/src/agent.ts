@@ -75,6 +75,7 @@ export function createAgentService({
       const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
       const organizationId = auth.organizationId;
       const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", organizationId);
+      assertConversationScope(conversation, organizationId);
       const content = Buffer.from(parsed.content_base64, "base64");
       const sha256 = createHash("sha256").update(content).digest("hex");
       await mkdir(uploadDir, { recursive: true });
@@ -146,6 +147,7 @@ export function createAgentService({
       const parsed = runSchema.parse(input);
       const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
       const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", auth.organizationId);
+      assertConversationScope(conversation, auth.organizationId);
       const conversationId = conversation.conversationId;
       const file = resolveFileForOrganization(store, conversationId, auth.organizationId, parsed.file_id);
       const action = inferAction(parsed.message);
@@ -204,6 +206,7 @@ export function createAgentService({
       const parsed = chatSchema.parse(input);
       const auth = await resolveAgentAuth({ limoraClient, requestedOrganizationId: parsed.organization_id, requestContext });
       const conversation = store.ensureConversation(parsed.conversation_id, "Chronofact conversation", auth.organizationId);
+      assertConversationScope(conversation, auth.organizationId);
       const conversationId = conversation.conversationId;
       const organizationId = auth.organizationId;
       const file = resolveFileForOrganization(store, conversationId, organizationId, parsed.file_id);
@@ -780,6 +783,16 @@ function resolveFile(store: AgentStore, conversationId: string, fileId?: string)
     return store.getFile(fileId);
   }
   return store.latestFile(conversationId);
+}
+
+function assertConversationScope(conversation: { organizationId?: string | null }, organizationId: string) {
+  if (conversation.organizationId === organizationId) {
+    return;
+  }
+  const error = new Error("当前对话不属于这个组织空间。") as Error & { status?: number; code?: string };
+  error.status = 403;
+  error.code = "conversation_scope_denied";
+  throw error;
 }
 
 function resolveFileForOrganization(store: AgentStore, conversationId: string, organizationId: string, fileId?: string): StoredFile | null {

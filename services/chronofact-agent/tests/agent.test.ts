@@ -49,6 +49,42 @@ test("conversation list and detail can be scoped by requested organization", asy
   assert.equal(crossOrgDetail.status, 404);
 });
 
+test("write paths reject conversation ids from another organization", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t);
+  t.after(cleanup);
+
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_scoped",
+    organization_id: "org_001",
+    title: "Scoped"
+  });
+
+  const upload = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_scoped",
+    organization_id: "org_002",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  assert.equal(upload.status, 403);
+  assert.equal(upload.body.error.code, "conversation_scope_denied");
+
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_scoped",
+    organization_id: "org_002",
+    message: "这个文件存证了吗"
+  });
+  assert.equal(chat.status, 403);
+  assert.equal(chat.body.error.code, "conversation_scope_denied");
+
+  const run = await postJson(`${baseUrl}/agent/runs`, {
+    conversation_id: "conv_scoped",
+    organization_id: "org_002",
+    message: "这个文件存证了吗"
+  });
+  assert.equal(run.status, 403);
+  assert.equal(run.body.error.code, "conversation_scope_denied");
+});
+
 test("openapi document exposes agent routes", async (t) => {
   const { baseUrl, cleanup } = await withAgent(t);
   t.after(cleanup);
