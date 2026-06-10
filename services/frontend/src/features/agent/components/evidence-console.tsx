@@ -50,7 +50,7 @@ export function EvidenceConsole({
   busy: boolean
   pendingAction: AgentActionRequired | null
   onSelectFile: (fileId: string) => void
-  onOpenConversation: (conversationId: string) => void
+  onOpenConversation: (conversationId: string, fileId?: string | null) => void
   onUploadFile: (file: File) => void
   onConfirmPreserve: (action: AgentActionRequired) => void
   onAnalyzeLibrary: () => void
@@ -306,7 +306,7 @@ export function EvidenceConsole({
                                   variant='ghost'
                                   size='sm'
                                   className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
-                                  onClick={() => onOpenConversation(file.conversation_id!)}
+                                  onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                                 >
                                   进入对话
                                 </Button>
@@ -368,7 +368,7 @@ export function EvidenceConsole({
                             variant='ghost'
                             size='sm'
                             className='mt-2 h-7 w-full justify-start px-1 text-xs text-muted-foreground'
-                            onClick={() => onOpenConversation(file.conversation_id!)}
+                            onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
                           >
                             进入原对话处理
                           </Button>

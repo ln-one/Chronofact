@@ -35,6 +35,7 @@ export default function AgentWorkspace() {
   const activeOrganizationRef = useRef<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
+  const [pendingSelectFileId, setPendingSelectFileId] = useState<string | null>(null)
 
   const limoraQuery = useQuery({
     queryKey: ['limora', 'chronofact-organization'] as const,
@@ -160,6 +161,7 @@ export default function AgentWorkspace() {
     bootstrappedRef.current = false
     setCurrentConversationId(null)
     setSelectedFileId(null)
+    setPendingSelectFileId(null)
   }, [activeOrganizationId])
 
   useEffect(() => {
@@ -175,15 +177,21 @@ export default function AgentWorkspace() {
 
   useEffect(() => {
     if (!detail) return
+    if (pendingSelectFileId && detail.files.some((file) => file.file_id === pendingSelectFileId)) {
+      setSelectedFileId(pendingSelectFileId)
+      setPendingSelectFileId(null)
+      return
+    }
     setSelectedFileId((current) => {
       if (current && detail.files.some((file) => file.file_id === current)) return current
       return detail.current_file?.file_id ?? detail.files[detail.files.length - 1]?.file_id ?? null
     })
-  }, [detail])
+  }, [detail, pendingSelectFileId])
 
-  function openConversation(conversationId: string) {
+  function openConversation(conversationId: string, fileId?: string | null) {
+    setPendingSelectFileId(fileId ?? null)
     setCurrentConversationId(conversationId)
-    setSelectedFileId(null)
+    setSelectedFileId(fileId && conversationId === currentConversationId ? fileId : null)
   }
 
   async function createAndOpenConversation() {
