@@ -84,6 +84,7 @@ export function EvidenceConsole({
   const visibleUnversionedFiles = showAllUnversionedFiles
     ? documentLibrary?.unversioned_files ?? []
     : documentLibrary?.unversioned_files.slice(0, 4) ?? []
+  const pendingItems = documentLibrary ? pendingLibraryItems(documentLibrary) : 0
 
   return (
     <ScrollArea className='h-full min-h-0 w-full overflow-x-hidden'>
@@ -263,8 +264,9 @@ export function EvidenceConsole({
                 <LibraryMetric label='已存证' value={documentLibrary.totals.preserved_documents} />
                 <LibraryMetric
                   label='待处理'
-                  value={pendingLibraryItems(documentLibrary)}
-                  onClick={pendingLibraryItems(documentLibrary) > 0
+                  value={pendingItems}
+                  actionLabel='展开待处理文件'
+                  onClick={pendingItems > 0
                     ? () => {
                         setShowAllDocuments(true)
                         setShowAllUnversionedFiles(true)
@@ -524,10 +526,12 @@ function ToolStep({ call }: { call: AgentToolCall }) {
 function LibraryMetric({
   label,
   value,
+  actionLabel,
   onClick,
 }: {
   label: string
   value: number
+  actionLabel?: string
   onClick?: () => void
 }) {
   if (onClick) {
@@ -535,6 +539,8 @@ function LibraryMetric({
       <button
         type='button'
         className='rounded-lg border bg-background/60 px-2 py-2 transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/25'
+        aria-label={actionLabel ?? label}
+        title={actionLabel ?? label}
         onClick={onClick}
       >
         <p className='font-semibold text-foreground'>{value}</p>
