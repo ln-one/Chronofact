@@ -10,6 +10,7 @@ import {
   listAgentConversations,
   startAgentRun,
   uploadAgentFile,
+  AgentApiError,
   type AgentActionRequired,
   type AgentConversationDetail,
 } from './agent-api'
@@ -319,8 +320,25 @@ function hasRunningWork(detail?: AgentConversationDetail) {
 
 function showError(fallback: string) {
   return (error: unknown) => {
+    if (error instanceof AgentApiError) {
+      toast.error(agentErrorMessage(error))
+      return
+    }
     toast.error(error instanceof Error ? error.message : fallback)
   }
+}
+
+function agentErrorMessage(error: AgentApiError) {
+  if (error.code === 'conversation_scope_denied') {
+    return '这个对话不属于当前空间，请切换回对应空间或新建对话。'
+  }
+  if (error.code === 'file_scope_denied') {
+    return '这个文件不属于当前空间，请重新上传或切换空间。'
+  }
+  if (error.code === 'organization_access_denied') {
+    return '当前账号没有这个空间的访问权限。'
+  }
+  return error.message
 }
 
 function requireActiveOrganization(organizationId: string | null) {

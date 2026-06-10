@@ -2,6 +2,30 @@ const agentApiBaseUrl = (
   import.meta.env.VITE_CHRONOFACT_AGENT_API_URL || 'http://127.0.0.1:3003'
 ).replace(/\/+$/, '')
 
+export class AgentApiError extends Error {
+  status: number
+  code: string
+  payload: unknown
+
+  constructor({
+    message,
+    status,
+    code,
+    payload,
+  }: {
+    message: string
+    status: number
+    code: string
+    payload: unknown
+  }) {
+    super(message)
+    this.name = 'AgentApiError'
+    this.status = status
+    this.code = code
+    this.payload = payload
+  }
+}
+
 export type AgentConversation = {
   conversation_id: string
   organization_id?: string
@@ -286,7 +310,12 @@ async function requestJson<T>(
   })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(payload?.error?.message || `Agent 请求失败：${response.status}`)
+    throw new AgentApiError({
+      message: payload?.error?.message || `Agent 请求失败：${response.status}`,
+      status: response.status,
+      code: payload?.error?.code || 'agent_request_failed',
+      payload,
+    })
   }
   return payload as T
 }
