@@ -293,6 +293,11 @@ export function EvidenceConsole({
                       </div>
                     </details>
                   ))}
+                  {documentLibrary.documents.length > 6 ? (
+                    <p className='px-1 text-xs text-muted-foreground/60'>
+                      还有 {documentLibrary.documents.length - 6} 个文档未显示。点击“分析文件库”可让 Agent 汇总全部文件。
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <div className='rounded-xl border border-dashed p-4 text-xs leading-relaxed text-muted-foreground/65'>
@@ -325,6 +330,11 @@ export function EvidenceConsole({
                         </div>
                       </div>
                     ))}
+                    {documentLibrary.unversioned_files.length > 4 ? (
+                      <p className='px-1 text-xs text-muted-foreground/60'>
+                        还有 {documentLibrary.unversioned_files.length - 4} 个待存证文件未显示。
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
