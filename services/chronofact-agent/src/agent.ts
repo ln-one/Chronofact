@@ -418,7 +418,7 @@ export function createAgentService({
         system: agentSystemPrompt(),
         user: generalPrompt(parsed.message, file)
       });
-      return reply(store, conversationId, guardGeneralReply(generalReply, file), {
+      return reply(store, conversationId, guardGeneralReply(generalReply, file, parsed.message, llmClient), {
         user_message: toMessageContext(userMessage),
         action: "chat",
         file: file ? toFileContext(file) : null,
@@ -657,7 +657,7 @@ export function createAgentService({
         system: agentSystemPrompt(),
         user: generalPrompt(parsed.message, file)
       });
-      complete(guardGeneralReply(generalReply, file), {
+      complete(guardGeneralReply(generalReply, file, parsed.message, llmClient), {
         action: "chat",
         file: file ? toFileContext(file) : null,
         action_required: null
@@ -963,7 +963,7 @@ export function createAgentService({
         system: agentSystemPrompt(),
         user: generalPrompt(message, file)
       });
-      content = guardGeneralReply(generalReply, file);
+      content = guardGeneralReply(generalReply, file, message, llmClient);
       extra = {
         ...extra,
         action: "chat",
@@ -1889,7 +1889,17 @@ function generalPrompt(message: string, file: StoredFile | null) {
   ].join("\n");
 }
 
-function guardGeneralReply(generated: string | null | undefined, file: StoredFile | null) {
+function guardGeneralReply(
+  generated: string | null | undefined,
+  file: StoredFile | null,
+  message: string,
+  llmClient: AgentLlmClient | null
+) {
+  const identityReply = agentIdentityReply(message, llmClient);
+  if (identityReply) {
+    return identityReply;
+  }
+
   const fallback = file
     ? `我看到当前文件是 ${file.filename}。你可以直接问“验证这个文件”，或者让我“帮你存证这个文件”。`
     : "你可以把文件拖进对话框，然后问我它有没有存证、是否被改过，或者让我帮你正式存证。";
@@ -1900,6 +1910,14 @@ function guardGeneralReply(generated: string | null | undefined, file: StoredFil
     return fallback;
   }
   return generated;
+}
+
+function agentIdentityReply(message: string, llmClient: AgentLlmClient | null) {
+  if (!/(你是谁|什么模型|哪个模型|真实\s*ai|真实AI|走.*ai|用了.*ai|模型名|底层模型|ai\s*吗|AI\s*吗)/i.test(message)) {
+    return null;
+  }
+  const model = llmClient?.configured && llmClient.model ? llmClient.model : "未配置外部模型";
+  return `我是 Chronofact Agent。当前 Agent 后端配置的对话模型是 ${model}；存证和验证结论来自文件指纹、存证记录和链上回执，不由模型自行编造。`;
 }
 
 function safeFilename(filename: string) {

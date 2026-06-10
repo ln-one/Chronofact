@@ -398,6 +398,56 @@ test("LLM inspect-only current-file query is completed with verification", async
   assert.match(chat.body.reply, /没有找到|未存证|还没有/);
 });
 
+test("model identity question reports configured agent model instead of file fallback", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t, {
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: "call_chat",
+                  type: "function",
+                  function: { name: "chatOnly", arguments: JSON.stringify({ reason: "user asks model identity" }) }
+                }]
+              }
+            }]
+          });
+        }
+        return new Response("upstream unavailable", { status: 503 });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_model_identity",
+    organization_id: "org_001",
+    filename: "current.txt",
+    content_base64: Buffer.from("context").toString("base64")
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_model_identity",
+    organization_id: "org_001",
+    message: "你是什么模型",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.action, "chat");
+  assert.match(chat.body.reply, /mimo-v2\.5-pro/);
+  assert.match(chat.body.reply, /Chronofact Agent/);
+  assert.doesNotMatch(chat.body.reply, /你可以直接问/);
+});
+
 test("LLM tool call can choose file content analysis without regex keywords", async (t) => {
   const llmCalls: any[] = [];
   const { baseUrl, cleanup } = await withAgent(t, {
