@@ -337,6 +337,11 @@ export function EvidenceConsole({
                                     >
                                       {version.proof_id ? '已存证' : '待存证'}
                                     </Badge>
+                                    {isSelected ? (
+                                      <Badge variant='secondary' className='shrink-0 font-normal'>
+                                        当前
+                                      </Badge>
+                                    ) : null}
                                   </div>
                                   {file?.conversation_id ? (
                                     <Button
@@ -418,6 +423,11 @@ export function EvidenceConsole({
                             >
                               待存证
                             </Badge>
+                            {isSelected ? (
+                              <Badge variant='secondary' className='shrink-0 font-normal'>
+                                当前
+                              </Badge>
+                            ) : null}
                           </div>
                           {file.conversation_id ? (
                             <Button
