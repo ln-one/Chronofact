@@ -32,6 +32,8 @@ const pendingBadgeClass =
   'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
 const selectedLibraryItemClass =
   'ring-2 ring-emerald-500/35 ring-offset-1 ring-offset-background'
+const selectedBadgeClass =
+  'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200'
 
 export function EvidenceConsole({
   detail,
@@ -337,11 +339,7 @@ export function EvidenceConsole({
                                     >
                                       {version.proof_id ? '已存证' : '待存证'}
                                     </Badge>
-                                    {isSelected ? (
-                                      <Badge variant='secondary' className='shrink-0 font-normal'>
-                                        当前
-                                      </Badge>
-                                    ) : null}
+                                    {isSelected ? <SelectedBadge /> : null}
                                   </div>
                                   {file?.conversation_id ? (
                                     <Button
@@ -423,11 +421,7 @@ export function EvidenceConsole({
                             >
                               待存证
                             </Badge>
-                            {isSelected ? (
-                              <Badge variant='secondary' className='shrink-0 font-normal'>
-                                当前
-                              </Badge>
-                            ) : null}
+                            {isSelected ? <SelectedBadge /> : null}
                           </div>
                           {file.conversation_id ? (
                             <Button
@@ -601,6 +595,14 @@ function LibraryMetric({
       <p className='font-semibold text-foreground'>{value}</p>
       <p className='mt-0.5 text-muted-foreground/60'>{label}</p>
     </div>
+  )
+}
+
+function SelectedBadge() {
+  return (
+    <Badge variant='secondary' className={`shrink-0 font-normal ${selectedBadgeClass}`}>
+      当前
+    </Badge>
   )
 }
 
