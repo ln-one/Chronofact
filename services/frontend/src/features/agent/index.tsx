@@ -274,6 +274,7 @@ export default function AgentWorkspace() {
             onSelectFile={setSelectedFileId}
             onUploadFile={(file) => void handleUploadOnly(file)}
             onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
+            onAnalyzeLibrary={() => void handleSend({ message: '帮我分析当前空间所有文件的存证情况' })}
           />
         </div>
       </div>

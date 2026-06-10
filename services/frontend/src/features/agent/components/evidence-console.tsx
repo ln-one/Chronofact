@@ -36,6 +36,7 @@ export function EvidenceConsole({
   onSelectFile,
   onUploadFile,
   onConfirmPreserve,
+  onAnalyzeLibrary,
 }: {
   detail: AgentConversationDetail | null
   organization: LimoraOrganization | null
@@ -47,6 +48,7 @@ export function EvidenceConsole({
   onSelectFile: (fileId: string) => void
   onUploadFile: (file: File) => void
   onConfirmPreserve: (action: AgentActionRequired) => void
+  onAnalyzeLibrary: () => void
 }) {
   const {
     getRootProps,
@@ -227,7 +229,19 @@ export function EvidenceConsole({
         <Separator />
 
         <div className='my-5'>
-          <p className='mb-2 text-xs font-medium text-muted-foreground'>空间文件库</p>
+          <div className='mb-2 flex items-center justify-between gap-2'>
+            <p className='text-xs font-medium text-muted-foreground'>空间文件库</p>
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='h-7 px-2 text-xs'
+              disabled={busy}
+              onClick={onAnalyzeLibrary}
+            >
+              分析文件库
+            </Button>
+          </div>
           {documentLibrary ? (
             <div className='space-y-2'>
               <div className='grid grid-cols-3 gap-2 text-center text-xs'>
