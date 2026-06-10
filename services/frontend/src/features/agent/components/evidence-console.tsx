@@ -278,9 +278,33 @@ export function EvidenceConsole({
                 </div>
               )}
               {documentLibrary.totals.uploaded_unversioned_files > 0 ? (
-                <p className='text-xs text-muted-foreground/60'>
-                  另有 {documentLibrary.totals.uploaded_unversioned_files} 个上传过但尚未存证的文件。
-                </p>
+                <div className='space-y-2'>
+                  <p className='text-xs text-muted-foreground/60'>
+                    另有 {documentLibrary.totals.uploaded_unversioned_files} 个上传过但尚未存证的文件。
+                  </p>
+                  <div className='space-y-2'>
+                    {documentLibrary.unversioned_files.slice(0, 4).map((file) => (
+                      <div
+                        key={file.file_id}
+                        className='min-w-0 overflow-hidden rounded-xl border border-dashed bg-background/40 px-3 py-2 text-sm'
+                      >
+                        <div className='flex min-w-0 items-start justify-between gap-2'>
+                          <div className='min-w-0'>
+                            <p className='truncate font-medium' title={file.filename}>
+                              {compactFilename(file.filename)}
+                            </p>
+                            <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
+                              {shortSha(file.sha256)}
+                            </p>
+                          </div>
+                          <Badge variant='outline' className='shrink-0 font-normal'>
+                            待存证
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : (
