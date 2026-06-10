@@ -252,11 +252,11 @@ export function EvidenceConsole({
               {documentLibrary.documents.length ? (
                 <div className='space-y-2'>
                   {documentLibrary.documents.slice(0, 6).map((entry) => (
-                    <div
+                    <details
                       key={entry.document.document_id}
-                      className='min-w-0 overflow-hidden rounded-xl border bg-background/60 px-3 py-2 text-sm'
+                      className='group min-w-0 overflow-hidden rounded-xl border bg-background/60 px-3 py-2 text-sm'
                     >
-                      <div className='flex min-w-0 items-start justify-between gap-2'>
+                      <summary className='flex cursor-pointer list-none items-start justify-between gap-2'>
                         <div className='min-w-0'>
                           <p className='truncate font-medium' title={entry.document.display_name}>
                             {compactFilename(entry.document.display_name)}
@@ -268,8 +268,29 @@ export function EvidenceConsole({
                         <Badge variant='secondary' className='shrink-0 font-normal'>
                           {documentStatusLabel(entry.latest_version)}
                         </Badge>
+                        <ChevronDown className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/45 transition group-open:rotate-180' />
+                      </summary>
+                      <div className='mt-3 min-w-0 space-y-2 border-t pt-3'>
+                        {entry.versions.length ? (
+                          entry.versions.slice().reverse().map(({ version }) => (
+                            <div
+                              key={version.document_version_id}
+                              className='flex min-w-0 items-center justify-between gap-2 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
+                            >
+                              <span className='shrink-0 font-medium'>v{version.version_no}</span>
+                              <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
+                                {shortSha(version.sha256)}
+                              </span>
+                              <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
+                                {version.proof_id ? '已存证' : '待存证'}
+                              </Badge>
+                            </div>
+                          ))
+                        ) : (
+                          <p className='text-xs text-muted-foreground/60'>还没有版本记录。</p>
+                        )}
                       </div>
-                    </div>
+                    </details>
                   ))}
                 </div>
               ) : (
