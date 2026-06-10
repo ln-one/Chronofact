@@ -1025,6 +1025,19 @@ function librarySummaryReply(summary: ReturnType<typeof buildLibrarySummary>) {
   if (uploaded_unversioned_files > 0) {
     lines.push(`另外还有 ${uploaded_unversioned_files} 个上传过但尚未进入版本链的文件。`);
   }
+  const pendingDocuments = summary.documents.filter((document) => !document.preserved).slice(0, 5);
+  const pendingUploads = summary.unversioned_files.slice(0, 5);
+  if (pendingDocuments.length > 0 || pendingUploads.length > 0) {
+    lines.push("待处理文件：");
+    for (const document of pendingDocuments) {
+      lines.push(`- ${document.name}: 已建档但最新版本未存证，${document.latest_sha256 ? shortSha(document.latest_sha256) : "无指纹"}`);
+    }
+    for (const file of pendingUploads) {
+      lines.push(`- ${file.filename}: 已上传但还没有正式存证，${shortSha(file.sha256)}`);
+    }
+  } else {
+    lines.push("当前没有发现待存证文件。");
+  }
   const recent = summary.documents.slice(0, 5);
   if (recent.length > 0) {
     lines.push("最近文件：");
