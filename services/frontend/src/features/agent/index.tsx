@@ -214,6 +214,7 @@ export default function AgentWorkspace() {
     file?: File | null
     ignoreSelectedFile?: boolean
   }) {
+    const organizationId = requireActiveOrganization(activeOrganizationId)
     const conversationId = await ensureConversation()
     const uploaded = file ? await uploadFile(conversationId, file) : null
     const fileId = ignoreSelectedFile
@@ -221,7 +222,7 @@ export default function AgentWorkspace() {
       : uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id
     await runMutation.mutateAsync({
       conversationId,
-      organizationId: activeOrganizationId!,
+      organizationId,
       message,
       fileId,
     })
@@ -229,9 +230,10 @@ export default function AgentWorkspace() {
 
   async function handleConfirmPreserve(action: AgentActionRequired) {
     if (!currentConversationId) return
+    const organizationId = requireActiveOrganization(activeOrganizationId)
     await runMutation.mutateAsync({
       conversationId: currentConversationId,
-      organizationId: activeOrganizationId!,
+      organizationId,
       message: '确认存证',
       fileId: action.file_id,
       confirmedAction: true,
@@ -319,6 +321,13 @@ function showError(fallback: string) {
   return (error: unknown) => {
     toast.error(error instanceof Error ? error.message : fallback)
   }
+}
+
+function requireActiveOrganization(organizationId: string | null) {
+  if (!organizationId) {
+    throw new Error('当前账号还没有可用的组织空间。')
+  }
+  return organizationId
 }
 
 async function fileToBase64(file: File) {
