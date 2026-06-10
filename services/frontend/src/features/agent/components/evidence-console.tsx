@@ -276,11 +276,17 @@ export function EvidenceConsole({
               </div>
               {documentLibrary.documents.length ? (
                 <div className='space-y-2'>
-                  {visibleDocuments.map((entry) => (
-                    <details
-                      key={entry.document.document_id}
-                      className='group min-w-0 overflow-hidden rounded-xl border bg-background/60 px-3 py-2 text-sm'
-                    >
+                  {visibleDocuments.map((entry) => {
+                    const needsPreserve = !entry.latest_version?.proof_id
+                    return (
+                      <details
+                        key={entry.document.document_id}
+                        className={`group min-w-0 overflow-hidden rounded-xl border px-3 py-2 text-sm ${
+                          needsPreserve
+                            ? 'border-amber-200/80 bg-amber-50/35 dark:border-amber-900/60 dark:bg-amber-950/10'
+                            : 'bg-background/60'
+                        }`}
+                      >
                       <summary className='flex cursor-pointer list-none items-start justify-between gap-2'>
                         <div className='min-w-0'>
                           <p className='truncate font-medium' title={entry.document.display_name}>
@@ -338,8 +344,9 @@ export function EvidenceConsole({
                           <p className='text-xs text-muted-foreground/60'>还没有版本记录。</p>
                         )}
                       </div>
-                    </details>
-                  ))}
+                      </details>
+                    )
+                  })}
                   {documentLibrary.documents.length > 6 ? (
                     <Button
                       type='button'
