@@ -2,6 +2,7 @@ const origin = process.env.CHRONOFACT_E2E_ORIGIN ?? "http://127.0.0.1:5176";
 const limoraBaseUrl = stripTrailingSlash(process.env.LIMORA_API_URL ?? "http://127.0.0.1:3002");
 const agentBaseUrl = stripTrailingSlash(process.env.CHRONOFACT_AGENT_API_URL ?? "http://127.0.0.1:3003");
 const password = "Chronofact123!";
+const expectEvm = process.env.CHRONOFACT_E2E_EXPECT_EVM !== "0";
 
 let cookie = "";
 
@@ -57,7 +58,11 @@ async function runSmoke() {
   });
   const preservedFile = preserve.detail.files.find((item) => item.file_id === file.file_id);
   assert(preservedFile?.proof_id, "preserved file should have proof_id");
-  assertMatch(preserve.assistant.content, /成功|已提交|已存证|完成存证/, "preserve reply should confirm success");
+  assertMatch(preserve.assistant.content, /成功|已提交|已存证|完成存证|安全记录|可靠验证|已记录/, "preserve reply should confirm success");
+  const blockchainProof = latestProofForFile(preserve.detail, file.file_id)?.snapshot?.proof;
+  if (expectEvm) {
+    assertEvmProof(blockchainProof);
+  }
 
   const verify = await startRun({
     conversation_id: conversation.conversation_id,
@@ -125,12 +130,47 @@ async function runSmoke() {
     file_id: file.file_id,
     sha256: file.sha256,
     proof_id: preservedFile.proof_id,
+    blockchain_proof: summarizeBlockchainProof(blockchainProof),
     query_reply: query.assistant.content,
     preserve_reply: preserve.assistant.content,
     verify_reply: verify.assistant.content,
     same_org_document_match: sameOrgFile.document_match,
     isolated_org_document_match: otherFile.document_match
   };
+}
+
+function latestProofForFile(detail, fileId) {
+  return (detail.proof_snapshots ?? [])
+    .filter((snapshot) => snapshot.file_id === fileId)
+    .at(-1);
+}
+
+function summarizeBlockchainProof(proof) {
+  if (!proof) return null;
+  const payload = proof.provider_payload ?? {};
+  return {
+    provider: proof.provider,
+    anchor_status: proof.anchor_status,
+    transaction_hash: proof.transaction_hash ?? payload.transaction_hash ?? null,
+    contract_address: payload.contract_address ?? null,
+    block_number: payload.block_number ?? null,
+    receipt_status: proof.receipt_status,
+    trace_status: proof.trace_status,
+    verification_status: proof.verification_status
+  };
+}
+
+function assertEvmProof(proof) {
+  const summary = summarizeBlockchainProof(proof);
+  assert(summary, "expected EVM blockchain proof in proof snapshot");
+  assertEqual(summary.provider, "evm", "proof provider should be EVM");
+  assertEqual(summary.anchor_status, "confirmed", "EVM anchor should be confirmed");
+  assert(/^0x[0-9a-fA-F]{64}$/.test(summary.transaction_hash ?? ""), `missing EVM transaction hash: ${JSON.stringify(summary)}`);
+  assert(/^0x[0-9a-fA-F]{40}$/.test(summary.contract_address ?? ""), `missing EVM contract address: ${JSON.stringify(summary)}`);
+  assert(Number(summary.block_number) > 0, `missing EVM block number: ${JSON.stringify(summary)}`);
+  assertEqual(summary.receipt_status, "valid", "EVM receipt status should be valid");
+  assertEqual(summary.trace_status, "valid", "EVM inclusion proof should be valid");
+  assertEqual(summary.verification_status, "verified", "EVM verification status should be verified");
 }
 
 async function registerUser(email, name) {

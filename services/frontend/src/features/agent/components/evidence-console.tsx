@@ -60,6 +60,7 @@ export function EvidenceConsole({
     detail?.current_file ??
     null
   const proofSnapshot = latestProofForFile(detail, selectedFile?.file_id)
+  const blockchainProof = chainProof(proofSnapshot)
   const relatedToolCalls = relatedTools(detail?.tool_calls ?? [], selectedFile)
 
   return (
@@ -178,6 +179,21 @@ export function EvidenceConsole({
                 </div>
               </details>
 
+              {blockchainProof ? (
+                <div className='mt-3 rounded-lg border bg-emerald-50/30 px-3 py-3 text-xs dark:bg-emerald-950/10'>
+                  <div className='mb-2 flex items-center gap-2 font-medium text-emerald-700 dark:text-emerald-300'>
+                    <ShieldCheck className='h-4 w-4' />
+                    链上记录
+                  </div>
+                  <div className='min-w-0 space-y-2 text-muted-foreground/75'>
+                    <StatusRow label='provider' value={blockchainProof.provider} monospace />
+                    <StatusRow label='tx' value={blockchainProof.transactionHash} monospace />
+                    <StatusRow label='contract' value={blockchainProof.contractAddress} monospace />
+                    <StatusRow label='block' value={blockchainProof.blockNumber} monospace />
+                  </div>
+                </div>
+              ) : null}
+
               {pendingAction?.file_id === selectedFile.file_id && (
                 <Button
                   type='button'
@@ -259,7 +275,7 @@ export function EvidenceConsole({
           <div className='flex items-start gap-2.5'>
             <AlertTriangle className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/60' />
             <p className='text-xs leading-relaxed text-muted-foreground/70'>
-              AI 只负责解释结果，不证明文件内容真实。可信结论来自文件指纹、存证记录和验证结果。
+              AI 只负责解释结果，不证明文件内容真实。可信结论来自文件指纹、存证记录、验证结果和链上交易。
             </p>
           </div>
         </div>
@@ -331,6 +347,22 @@ function latestProofForFile(detail: AgentConversationDetail | null, fileId?: str
 function anchorStatus(snapshot: ReturnType<typeof latestProofForFile>) {
   const proof = snapshot?.snapshot?.proof as Record<string, unknown> | undefined
   return String(proof?.anchor_status ?? proof?.anchorStatus ?? '无')
+}
+
+function chainProof(snapshot: ReturnType<typeof latestProofForFile>) {
+  const proof = snapshot?.snapshot?.proof as Record<string, unknown> | undefined
+  const payload = proof?.provider_payload as Record<string, unknown> | undefined
+  const transactionHash = String(proof?.transaction_hash ?? payload?.transaction_hash ?? '')
+  const contractAddress = String(payload?.contract_address ?? '')
+  const blockNumber = payload?.block_number === undefined ? '' : String(payload.block_number)
+  const provider = String(proof?.provider ?? payload?.provider ?? '')
+  if (!transactionHash && !contractAddress && !blockNumber) return null
+  return {
+    provider: provider || 'chain',
+    transactionHash: transactionHash || '无',
+    contractAddress: contractAddress || '无',
+    blockNumber: blockNumber || '待确认',
+  }
 }
 
 function fileVersionLabel(file: AgentFileContext) {

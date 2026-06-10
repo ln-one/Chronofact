@@ -1064,7 +1064,8 @@ function proofSummary(witnessRecord, verificationResult) {
     receipt_status: verificationResult.receipt_status,
     trace_status: verificationResult.trace_status,
     verification_status: verificationResult.status,
-    failure_reason: verificationResult.failure_reason ?? null
+    failure_reason: verificationResult.failure_reason ?? null,
+    provider_payload: witnessRecord.provider_payload ?? {}
   };
 }
 

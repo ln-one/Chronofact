@@ -9,12 +9,17 @@ LIMORA_PORT="${LIMORA_PORT:-3002}"
 CHRONOFACT_API_PORT="${CHRONOFACT_API_PORT:-3001}"
 CHRONOFACT_AGENT_PORT="${CHRONOFACT_AGENT_PORT:-3003}"
 FRONTEND_PORT="${FRONTEND_PORT:-5176}"
+CHRONESTIA_PORT="${CHRONESTIA_PORT:-8080}"
+GANACHE_PORT="${CHRONOFACT_E2E_GANACHE_PORT:-18545}"
 FRONTEND_ORIGIN="http://127.0.0.1:${FRONTEND_PORT}"
 LIMORA_URL="http://127.0.0.1:${LIMORA_PORT}"
 CHRONOFACT_API_URL="http://127.0.0.1:${CHRONOFACT_API_PORT}"
 CHRONOFACT_AGENT_URL="http://127.0.0.1:${CHRONOFACT_AGENT_PORT}"
 DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:${POSTGRES_PORT}/limora"
-CHRONESTIA_URL="${CHRONOFACT_CHRONESTIA_URL:-http://127.0.0.1:${CHRONESTIA_PORT:-8080}}"
+CHRONESTIA_URL="${CHRONOFACT_CHRONESTIA_URL:-http://127.0.0.1:${CHRONESTIA_PORT}}"
+GANACHE_URL="http://127.0.0.1:${GANACHE_PORT}"
+EVM_CHAIN_ID="${CHRONOFACT_E2E_EVM_CHAIN_ID:-31337}"
+EVM_PRIVATE_KEY="${CHRONOFACT_E2E_EVM_PRIVATE_KEY:-0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce036f7aab27215992b5d47}"
 
 usage() {
   cat <<EOF
@@ -27,6 +32,8 @@ Environment overrides:
   CHRONOFACT_AGENT_PORT=${CHRONOFACT_AGENT_PORT}
   CHRONOFACT_E2E_POSTGRES_PORT=${POSTGRES_PORT}
   CHRONOFACT_E2E_WITH_CHRONESTIA=1
+  CHRONOFACT_E2E_CHRONESTIA_PROVIDER=evm|dev
+  CHRONOFACT_E2E_GANACHE_PORT=${GANACHE_PORT}
 EOF
 }
 
@@ -97,6 +104,11 @@ start_chronestia_if_requested() {
     return 0
   fi
 
+  if [[ "${CHRONOFACT_E2E_CHRONESTIA_PROVIDER:-evm}" == "evm" ]]; then
+    export CHRONOFACT_CHRONESTIA_URL="$CHRONESTIA_URL"
+    return 0
+  fi
+
   if python3 "$ROOT_DIR/scripts/compose_smart.py" up -d chronestia >/dev/null 2>&1; then
     if wait_for_url "${CHRONESTIA_URL}/healthz" "Chronestia" 45; then
       export CHRONOFACT_CHRONESTIA_URL="$CHRONESTIA_URL"
@@ -106,6 +118,42 @@ start_chronestia_if_requested() {
 
   echo "Chronestia unavailable; Chronofact API will use local adapter." >&2
   unset CHRONOFACT_CHRONESTIA_URL
+}
+
+start_chronestia_evm_windows() {
+  kill_port "$GANACHE_PORT"
+  kill_port "$CHRONESTIA_PORT"
+  rm -f "$ROOT_DIR/.cache/e2e-logs/ganache.log" "$ROOT_DIR/.cache/e2e-logs/chronestia-evm.log"
+  mkdir -p "$ROOT_DIR/.cache/chronestia-evm"
+
+  tmux new-session -d -s "$SESSION" -n ganache \
+    "cd '$ROOT_DIR' && npx --yes ganache@7.9.2 --server.host 127.0.0.1 --server.port '$GANACHE_PORT' --chain.chainId '$EVM_CHAIN_ID' --wallet.accounts '$EVM_PRIVATE_KEY,1000000000000000000000' --miner.blockTime 0 --logging.quiet 2>&1 | tee '$ROOT_DIR/.cache/e2e-logs/ganache.log'"
+
+  for _ in $(seq 1 60); do
+    if curl -fsS \
+      -X POST "$GANACHE_URL" \
+      -H "Content-Type: application/json" \
+      -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+      >/dev/null 2>&1; then
+      echo "OK Ganache: ${GANACHE_URL}"
+      break
+    fi
+    sleep 0.5
+  done
+
+  if ! curl -fsS \
+    -X POST "$GANACHE_URL" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}' \
+    >/dev/null 2>&1; then
+    echo "Timed out waiting for Ganache: ${GANACHE_URL}" >&2
+    exit 1
+  fi
+
+  tmux new-window -t "$SESSION" -n chronestia-evm \
+    "cd '$ROOT_DIR/services/chronestia' && CHRONESTIA_ADDR='127.0.0.1:${CHRONESTIA_PORT}' CHRONESTIA_DB_PATH='$ROOT_DIR/.cache/chronestia-evm/chronestia.db' CHRONESTIA_PROVIDER='evm' CHRONESTIA_EVM_RPC_URL='$GANACHE_URL' CHRONESTIA_EVM_CHAIN_ID='$EVM_CHAIN_ID' CHRONESTIA_EVM_PRIVATE_KEY='$EVM_PRIVATE_KEY' CHRONESTIA_EVM_CONFIRMATIONS=1 CHRONESTIA_EVM_ALLOW_DEPLOY=true go run ./cmd/chronestia 2>&1 | tee '$ROOT_DIR/.cache/e2e-logs/chronestia-evm.log'"
+
+  wait_for_url "${CHRONESTIA_URL}/healthz" "Chronestia EVM" 80
 }
 
 up() {
@@ -127,8 +175,16 @@ up() {
   kill_port "$CHRONOFACT_API_PORT"
   kill_port "$CHRONOFACT_AGENT_PORT"
   kill_port "$FRONTEND_PORT"
+  kill_port "$GANACHE_PORT"
+  kill_port "$CHRONESTIA_PORT"
 
-  tmux new-session -d -s "$SESSION" -n limora \
+  if [[ "${CHRONOFACT_E2E_WITH_CHRONESTIA:-1}" == "1" && "${CHRONOFACT_E2E_CHRONESTIA_PROVIDER:-evm}" == "evm" ]]; then
+    start_chronestia_evm_windows
+  else
+    tmux new-session -d -s "$SESSION" -n bootstrap "sleep infinity"
+  fi
+
+  tmux new-window -t "$SESSION" -n limora \
     "cd '$ROOT_DIR/services/limora' && PORT='$LIMORA_PORT' DATABASE_URL='$DATABASE_URL' BETTER_AUTH_SECRET='chronofact-local-dev-secret-32bytes-minimum' LIMORA_PUBLIC_BASE_URL='$LIMORA_URL' BETTER_AUTH_URL='$LIMORA_URL' LIMORA_ALLOWED_HOSTS='127.0.0.1:${LIMORA_PORT},127.0.0.1,localhost:${LIMORA_PORT},localhost' LIMORA_TRUSTED_ORIGINS='$FRONTEND_ORIGIN,http://localhost:${FRONTEND_PORT},$CHRONOFACT_AGENT_URL,$CHRONOFACT_API_URL' LIMORA_COOKIE_MODE='local' LIMORA_RATE_LIMIT_ENABLED=false node dist/src/server.js"
 
   local api_env="PORT='$CHRONOFACT_API_PORT' CHRONOFACT_LIMORA_URL='$LIMORA_URL' CHRONOFACT_CORS_ORIGIN='$FRONTEND_ORIGIN'"
@@ -161,6 +217,8 @@ down() {
   kill_port "$CHRONOFACT_API_PORT"
   kill_port "$CHRONOFACT_AGENT_PORT"
   kill_port "$FRONTEND_PORT"
+  kill_port "$GANACHE_PORT"
+  kill_port "$CHRONESTIA_PORT"
   if [[ "${CHRONOFACT_E2E_STOP_POSTGRES:-0}" == "1" ]]; then
     docker rm -f "$POSTGRES_CONTAINER" >/dev/null 2>&1 || true
   fi
@@ -177,6 +235,8 @@ status() {
     -iTCP:"$CHRONOFACT_API_PORT" \
     -iTCP:"$CHRONOFACT_AGENT_PORT" \
     -iTCP:"$FRONTEND_PORT" \
+    -iTCP:"$GANACHE_PORT" \
+    -iTCP:"$CHRONESTIA_PORT" \
     -sTCP:LISTEN 2>/dev/null || true
   docker ps --filter "name=${POSTGRES_CONTAINER}" --format '{{.Names}} {{.Status}} {{.Ports}}' 2>/dev/null || true
 }
