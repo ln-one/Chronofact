@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   createAgentConversation,
+  getAgentHealth,
   getAgentConversation,
   listAgentConversations,
   startAgentRun,
@@ -18,6 +19,7 @@ import { AgentChatPanel } from './components/agent-chat-panel'
 import { EvidenceConsole } from './components/evidence-console'
 
 const queryKeys = {
+  health: ['chronofact-agent', 'health'] as const,
   conversations: ['chronofact-agent', 'conversations'] as const,
   detail: (conversationId: string | null) =>
     ['chronofact-agent', 'conversation', conversationId] as const,
@@ -38,6 +40,13 @@ export default function AgentWorkspace() {
   const activeMembership = limoraQuery.data?.membership ?? null
   const activeOrganizationId = activeMembership?.organizationId ?? null
   const identity = limoraQuery.data?.session.identity ?? null
+
+  const healthQuery = useQuery({
+    queryKey: queryKeys.health,
+    queryFn: getAgentHealth,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  })
 
   const conversationsQuery = useQuery({
     queryKey: [...queryKeys.conversations, activeOrganizationId] as const,
@@ -245,6 +254,7 @@ export default function AgentWorkspace() {
           <EvidenceConsole
             detail={detail}
             organization={activeMembership?.organization ?? null}
+            agentHealth={healthQuery.data ?? null}
             selectedFileId={selectedFileId}
             busy={busy}
             pendingAction={pendingAction}

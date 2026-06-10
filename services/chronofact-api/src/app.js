@@ -13,15 +13,16 @@ const defaultStorageDir = join(moduleDir, "..", "..", "..", ".cache", "chronofac
 
 export function createApp({ storageDir = defaultStorageDir, env = process.env } = {}) {
   const store = createInMemoryStore();
+  const runtime = describeRuntime(env);
   const orchestrator = createChronofactOrchestrator({
     store,
     clients: createChronofactAdapters({ env, storageDir })
   });
 
-  return { orchestrator, handler: createHandler(orchestrator) };
+  return { orchestrator, handler: createHandler(orchestrator, runtime) };
 }
 
-function createHandler(orchestrator) {
+function createHandler(orchestrator, runtime) {
   return async function handler(request, response) {
     try {
       const url = new URL(request.url, "http://localhost");
@@ -34,7 +35,11 @@ function createHandler(orchestrator) {
       }
 
       if (request.method === "GET" && url.pathname === "/health") {
-        return sendJson(response, 200, { status: "ok", service: "chronofact-api" });
+        return sendJson(response, 200, {
+          status: "ok",
+          service: "chronofact-api",
+          runtime
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/mock-contract") {
@@ -351,6 +356,47 @@ function createHandler(orchestrator) {
         }
       });
     }
+  };
+}
+
+function describeRuntime(env) {
+  return {
+    chronestia: env.CHRONOFACT_CHRONESTIA_URL
+      ? {
+          mode: "http",
+          url: env.CHRONOFACT_CHRONESTIA_URL
+        }
+      : {
+          mode: "mock",
+          url: null
+        },
+    limora: env.CHRONOFACT_LIMORA_URL
+      ? {
+          mode: "http",
+          url: env.CHRONOFACT_LIMORA_URL
+        }
+      : {
+          mode: "demo",
+          url: null
+        },
+    dualweave: env.CHRONOFACT_DUALWEAVE_URL
+      ? {
+          mode: "http",
+          url: env.CHRONOFACT_DUALWEAVE_URL
+        }
+      : {
+          mode: "mock",
+          url: null
+        },
+    ai: env.CHRONOFACT_AI_URL
+      ? {
+          mode: "http",
+          url: env.CHRONOFACT_AI_URL
+        }
+      : {
+          mode: "mock",
+          url: null
+        }
   };
 }
 

@@ -18,6 +18,7 @@ import type {
   AgentActionRequired,
   AgentConversationDetail,
   AgentFileContext,
+  AgentHealth,
   AgentToolCall,
 } from '../agent-api'
 import type { LimoraOrganization } from '@/features/auth/limora-api'
@@ -26,6 +27,7 @@ import { getAgentApiBaseUrl } from '../agent-api'
 export function EvidenceConsole({
   detail,
   organization,
+  agentHealth,
   selectedFileId,
   busy,
   pendingAction,
@@ -35,6 +37,7 @@ export function EvidenceConsole({
 }: {
   detail: AgentConversationDetail | null
   organization: LimoraOrganization | null
+  agentHealth: AgentHealth | null
   selectedFileId: string | null
   busy: boolean
   pendingAction: AgentActionRequired | null
@@ -62,6 +65,7 @@ export function EvidenceConsole({
   const proofSnapshot = latestProofForFile(detail, selectedFile?.file_id)
   const blockchainProof = chainProof(proofSnapshot)
   const relatedToolCalls = relatedTools(detail?.tool_calls ?? [], selectedFile)
+  const chainStatus = runtimeChainStatus(agentHealth)
 
   return (
     <ScrollArea className='h-full min-h-0 w-full overflow-x-hidden'>
@@ -95,6 +99,10 @@ export function EvidenceConsole({
                   Agent: {getAgentApiBaseUrl().replace(/^https?:\/\//, '')}
                 </span>
               </span>
+            </div>
+            <div className='mt-3 rounded-lg border bg-background/55 px-3 py-2 text-xs text-muted-foreground/75'>
+              <StatusRow label='证明后端' value={chainStatus.backend} />
+              <StatusRow label='链路状态' value={chainStatus.detail} />
             </div>
           </div>
         </div>
@@ -363,6 +371,37 @@ function chainProof(snapshot: ReturnType<typeof latestProofForFile>) {
     contractAddress: contractAddress || '无',
     blockNumber: blockNumber || '待确认',
   }
+}
+
+function runtimeChainStatus(agentHealth: AgentHealth | null) {
+  const api = agentHealth?.chronofact_api
+  if (!api) {
+    return {
+      backend: '正在检测',
+      detail: '等待 Agent 返回状态',
+    }
+  }
+  if (!api.reachable) {
+    return {
+      backend: 'Chronofact API 不可达',
+      detail: api.url,
+    }
+  }
+  const chronestia = api.runtime?.chronestia
+  if (chronestia?.mode === 'http') {
+    return {
+      backend: 'Chronestia HTTP',
+      detail: chronestia.url ? `已连接 ${stripProtocol(chronestia.url)}` : '已连接真实证明服务',
+    }
+  }
+  return {
+    backend: '本地演示后端',
+    detail: '未接 Chronestia，存证为 demo 模式',
+  }
+}
+
+function stripProtocol(url: string) {
+  return url.replace(/^https?:\/\//, '')
 }
 
 function fileVersionLabel(file: AgentFileContext) {

@@ -73,6 +73,25 @@ async function withLimoraServer(t, { allowed = true, session = true, hidden = fa
   return `http://127.0.0.1:${port}`;
 }
 
+test("health exposes active adapter runtime", async (t) => {
+  const baseUrl = await withServer(t, {
+    CHRONOFACT_CHRONESTIA_URL: "http://127.0.0.1:8080",
+    CHRONOFACT_LIMORA_URL: "http://127.0.0.1:3002",
+    CHRONOFACT_AI_URL: "https://ai.example.test"
+  });
+
+  const response = await fetch(`${baseUrl}/health`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.service, "chronofact-api");
+  assert.equal(body.runtime.chronestia.mode, "http");
+  assert.equal(body.runtime.chronestia.url, "http://127.0.0.1:8080");
+  assert.equal(body.runtime.limora.mode, "http");
+  assert.equal(body.runtime.dualweave.mode, "mock");
+  assert.equal(body.runtime.ai.mode, "http");
+});
+
 test("HTTP API supports submit, version, detail, and verify flows", async (t) => {
   const baseUrl = await withServer(t);
 

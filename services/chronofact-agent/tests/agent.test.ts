@@ -38,6 +38,36 @@ test("openapi document exposes agent routes", async (t) => {
   assert.ok(spec.body.paths["/agent/runs"]);
 });
 
+test("health proxies Chronofact API runtime", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: "http://chronofact.example.test",
+    fetchImpl: async (url) => {
+      if (String(url) === "http://chronofact.example.test/health") {
+        return Response.json({
+          status: "ok",
+          service: "chronofact-api",
+          runtime: {
+            chronestia: { mode: "http", url: "http://127.0.0.1:8080" },
+            limora: { mode: "http", url: "http://127.0.0.1:3002" },
+            dualweave: { mode: "mock", url: null },
+            ai: { mode: "mock", url: null }
+          }
+        });
+      }
+      return fetch(url);
+    }
+  });
+  t.after(cleanup);
+
+  const health = await getJson(`${baseUrl}/health`);
+
+  assert.equal(health.status, 200);
+  assert.equal(health.body.service, "chronofact-agent");
+  assert.equal(health.body.chronofact_api.reachable, true);
+  assert.equal(health.body.chronofact_api.runtime.chronestia.mode, "http");
+  assert.equal(health.body.chronofact_api.runtime.chronestia.url, "http://127.0.0.1:8080");
+});
+
 test("file upload stores a stable sha256 in conversation context", async (t) => {
   const { baseUrl, cleanup } = await withAgent(t);
   t.after(cleanup);

@@ -113,6 +113,35 @@ export type AgentConversationDetail = {
   current_file: AgentFileContext | null
 }
 
+export type AgentHealth = {
+  status: string
+  service: string
+  llm?: {
+    configured: boolean
+    model: string | null
+  }
+  limora?: {
+    configured: boolean
+  }
+  chronofact_api?: {
+    url: string
+    reachable: boolean
+    status: string
+    service: string | null
+    runtime: {
+      chronestia?: RuntimeAdapterStatus
+      limora?: RuntimeAdapterStatus
+      dualweave?: RuntimeAdapterStatus
+      ai?: RuntimeAdapterStatus
+    } | null
+  }
+}
+
+export type RuntimeAdapterStatus = {
+  mode: string
+  url: string | null
+}
+
 export type AgentChatResponse = {
   conversation_id: string
   reply: string
@@ -130,6 +159,10 @@ export type AgentChatResponse = {
 export async function listAgentConversations() {
   const payload = await requestJson<{ conversations: AgentConversation[] }>('/agent/conversations')
   return payload.conversations
+}
+
+export async function getAgentHealth() {
+  return requestJson<AgentHealth>('/health')
 }
 
 export async function createAgentConversation(input: { title?: string; organizationId: string }) {

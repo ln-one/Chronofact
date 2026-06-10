@@ -46,7 +46,8 @@ export function createChronofactAgentApp({
     llmClient,
     limoraClient
   });
-  const honoApp = createHonoApp({ agent, store, llmClient, env });
+  const chronofactApiUrl = env.CHRONOFACT_API_URL || "http://127.0.0.1:3001";
+  const honoApp = createHonoApp({ agent, store, llmClient, env, chronofactApiUrl, fetchImpl });
 
   return {
     close: () => store.close(),
@@ -79,12 +80,16 @@ function createHonoApp({
   agent,
   store,
   llmClient,
-  env
+  env,
+  chronofactApiUrl,
+  fetchImpl
 }: {
   agent: ReturnType<typeof createAgentService>;
   store: ReturnType<typeof createAgentStore>;
   llmClient: ReturnType<typeof createAgentLlmClient>;
   env: Record<string, string | undefined>;
+  chronofactApiUrl: string;
+  fetchImpl: typeof fetch;
 }) {
   const app = new OpenAPIHono();
   app.use("*", cors({
@@ -98,13 +103,17 @@ function createHonoApp({
     method: "get",
     path: "/health",
     summary: "Agent service health"
-  }), (c) => c.json({
+  }), async (c) => c.json({
     status: "ok",
     service: "chronofact-agent",
     llm: {
       configured: llmClient.configured,
       model: llmClient.configured ? llmClient.model : null
-    }
+    },
+    limora: {
+      configured: Boolean(env.CHRONOFACT_AGENT_LIMORA_URL || env.LIMORA_API_URL)
+    },
+    chronofact_api: await readChronofactApiHealth({ chronofactApiUrl, fetchImpl })
   }, 200));
 
   app.openapi(jsonRoute({
@@ -302,6 +311,35 @@ function jsonResponse(description: string, schema: any = jsonResponseSchema) {
       }
     }
   };
+}
+
+async function readChronofactApiHealth({
+  chronofactApiUrl,
+  fetchImpl
+}: {
+  chronofactApiUrl: string;
+  fetchImpl: typeof fetch;
+}) {
+  const url = chronofactApiUrl.replace(/\/+$/, "");
+  try {
+    const response = await fetchImpl(`${url}/health`);
+    const payload = await response.json().catch(() => ({}));
+    return {
+      url,
+      reachable: response.ok,
+      status: response.ok ? payload?.status ?? "ok" : "error",
+      service: payload?.service ?? null,
+      runtime: payload?.runtime ?? null
+    };
+  } catch {
+    return {
+      url,
+      reachable: false,
+      status: "unreachable",
+      service: null,
+      runtime: null
+    };
+  }
 }
 
 function toConversationResponse(row: any) {
