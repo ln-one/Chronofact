@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   createAgentConversation,
+  getAgentDocumentLibrary,
   getAgentHealth,
   getAgentConversation,
   listAgentConversations,
@@ -20,6 +21,8 @@ import { EvidenceConsole } from './components/evidence-console'
 
 const queryKeys = {
   health: ['chronofact-agent', 'health'] as const,
+  library: (organizationId: string | null) =>
+    ['chronofact-agent', 'documents', organizationId] as const,
   conversations: ['chronofact-agent', 'conversations'] as const,
   detail: (conversationId: string | null) =>
     ['chronofact-agent', 'conversation', conversationId] as const,
@@ -46,6 +49,13 @@ export default function AgentWorkspace() {
     queryFn: getAgentHealth,
     staleTime: 10_000,
     refetchInterval: 15_000,
+  })
+
+  const libraryQuery = useQuery({
+    queryKey: queryKeys.library(activeOrganizationId),
+    queryFn: () => getAgentDocumentLibrary(activeOrganizationId!),
+    enabled: Boolean(activeOrganizationId),
+    staleTime: 0,
   })
 
   const conversationsQuery = useQuery({
@@ -95,6 +105,7 @@ export default function AgentWorkspace() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.detail(uploaded.conversation_id ?? currentConversationId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.library(activeOrganizationId) }),
       ])
     },
     onError: showError('上传失败'),
@@ -112,6 +123,7 @@ export default function AgentWorkspace() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
         queryClient.invalidateQueries({ queryKey: queryKeys.detail(payload.conversation_id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.library(activeOrganizationId) }),
       ])
     },
     onError: showError('发送失败'),
@@ -255,6 +267,7 @@ export default function AgentWorkspace() {
             detail={detail}
             organization={activeMembership?.organization ?? null}
             agentHealth={healthQuery.data ?? null}
+            documentLibrary={libraryQuery.data ?? null}
             selectedFileId={selectedFileId}
             busy={busy}
             pendingAction={pendingAction}

@@ -113,6 +113,26 @@ export type AgentConversationDetail = {
   current_file: AgentFileContext | null
 }
 
+export type AgentDocumentLibrary = {
+  organization_id: string
+  totals: {
+    documents: number
+    preserved_documents: number
+    unpreserved_documents: number
+    versions: number
+    uploaded_unversioned_files: number
+  }
+  documents: Array<{
+    document: AgentDocument
+    latest_version: AgentDocumentVersion | null
+    versions: Array<{
+      version: AgentDocumentVersion
+      file: AgentFileContext | null
+    }>
+  }>
+  unversioned_files: AgentFileContext[]
+}
+
 export type AgentHealth = {
   status: string
   service: string
@@ -176,6 +196,12 @@ export async function createAgentConversation(input: { title?: string; organizat
 export async function getAgentConversation(conversationId: string) {
   return requestJson<AgentConversationDetail>(
     `/agent/conversations/${encodeURIComponent(conversationId)}`
+  )
+}
+
+export async function getAgentDocumentLibrary(organizationId: string) {
+  return requestJson<AgentDocumentLibrary>(
+    `/agent/documents?organization_id=${encodeURIComponent(organizationId)}`
   )
 }
 

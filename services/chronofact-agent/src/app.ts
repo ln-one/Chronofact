@@ -178,6 +178,18 @@ function createHonoApp({
     }, 200);
   });
 
+  app.openapi(jsonRoute({
+    method: "get",
+    path: "/agent/documents",
+    summary: "List organization document library"
+  }), async (c) => {
+    const auth = await agent.resolveAuth({
+      organizationId: c.req.query("organization_id"),
+      requestContext: requestContext(c.req.raw.headers)
+    });
+    return c.json(toDocumentLibraryResponse(store.listDocumentLibrary(auth.organizationId), auth.organizationId), 200);
+  });
+
   app.openapi(createRoute({
     method: "get",
     path: "/agent/conversations/{conversation_id}",
@@ -409,6 +421,34 @@ function toDocumentVersionResponse(row: any) {
     asset_id: row.assetId,
     chronofact_version_id: row.chronofactVersionId,
     created_at: row.createdAt
+  };
+}
+
+function toDocumentLibraryResponse(library: ReturnType<ReturnType<typeof createAgentStore>["listDocumentLibrary"]>, organizationId: string) {
+  const documents = library.documents.map((entry) => {
+    const latest = entry.latestVersion;
+    return {
+      document: toDocumentResponse(entry.document),
+      latest_version: latest ? toDocumentVersionResponse(latest) : null,
+      versions: entry.versions.map((versionEntry) => ({
+        version: toDocumentVersionResponse(versionEntry.version),
+        file: toFileResponse(versionEntry.file)
+      }))
+    };
+  });
+  const unversionedFiles = library.unversionedFiles.map((file) => toFileResponse(file));
+  const preservedDocuments = documents.filter((entry) => Boolean(entry.latest_version?.proof_id)).length;
+  return {
+    organization_id: organizationId,
+    totals: {
+      documents: documents.length,
+      preserved_documents: preservedDocuments,
+      unpreserved_documents: documents.length - preservedDocuments,
+      versions: documents.reduce((count, entry) => count + entry.versions.length, 0),
+      uploaded_unversioned_files: unversionedFiles.length
+    },
+    documents,
+    unversioned_files: unversionedFiles
   };
 }
 

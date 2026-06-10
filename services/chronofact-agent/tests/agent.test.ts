@@ -36,6 +36,7 @@ test("openapi document exposes agent routes", async (t) => {
   assert.ok(spec.body.paths["/agent/files"]);
   assert.ok(spec.body.paths["/agent/chat"]);
   assert.ok(spec.body.paths["/agent/runs"]);
+  assert.ok(spec.body.paths["/agent/documents"]);
 });
 
 test("health proxies Chronofact API runtime", async (t) => {
@@ -596,6 +597,40 @@ test("agent can summarize organization document library without a current file",
   assert.doesNotMatch(assistant.content, /请先上传/);
   assert.equal(assistant.metadata.action, "library_summary");
   assert.equal(completed.body.tool_calls.at(-1).tool_name, "listDocumentLibrary");
+});
+
+test("organization document library API lists files across conversations", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_source",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_other",
+    organization_id: "org_001",
+    title: "另一个对话"
+  });
+
+  const library = await getJson(`${baseUrl}/agent/documents?organization_id=org_001`);
+
+  assert.equal(library.status, 200);
+  assert.equal(library.body.organization_id, "org_001");
+  assert.equal(library.body.totals.documents, 1);
+  assert.equal(library.body.totals.preserved_documents, 1);
+  assert.equal(library.body.documents[0].document.display_name, "report.txt");
+  assert.equal(library.body.documents[0].latest_version.proof_id, "proof_001");
 });
 
 test("agent treats unpreserved-file questions as organization library queries", async (t) => {

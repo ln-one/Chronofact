@@ -17,6 +17,7 @@ import { Separator } from '@/components/ui/separator'
 import type {
   AgentActionRequired,
   AgentConversationDetail,
+  AgentDocumentLibrary,
   AgentFileContext,
   AgentHealth,
   AgentToolCall,
@@ -28,6 +29,7 @@ export function EvidenceConsole({
   detail,
   organization,
   agentHealth,
+  documentLibrary,
   selectedFileId,
   busy,
   pendingAction,
@@ -38,6 +40,7 @@ export function EvidenceConsole({
   detail: AgentConversationDetail | null
   organization: LimoraOrganization | null
   agentHealth: AgentHealth | null
+  documentLibrary: AgentDocumentLibrary | null
   selectedFileId: string | null
   busy: boolean
   pendingAction: AgentActionRequired | null
@@ -221,6 +224,58 @@ export function EvidenceConsole({
           )}
         </div>
 
+        <Separator />
+
+        <div className='my-5'>
+          <p className='mb-2 text-xs font-medium text-muted-foreground'>空间文件库</p>
+          {documentLibrary ? (
+            <div className='space-y-2'>
+              <div className='grid grid-cols-3 gap-2 text-center text-xs'>
+                <LibraryMetric label='文件' value={documentLibrary.totals.documents} />
+                <LibraryMetric label='版本' value={documentLibrary.totals.versions} />
+                <LibraryMetric label='已存证' value={documentLibrary.totals.preserved_documents} />
+              </div>
+              {documentLibrary.documents.length ? (
+                <div className='space-y-2'>
+                  {documentLibrary.documents.slice(0, 6).map((entry) => (
+                    <div
+                      key={entry.document.document_id}
+                      className='min-w-0 overflow-hidden rounded-xl border bg-background/60 px-3 py-2 text-sm'
+                    >
+                      <div className='flex min-w-0 items-start justify-between gap-2'>
+                        <div className='min-w-0'>
+                          <p className='truncate font-medium' title={entry.document.display_name}>
+                            {compactFilename(entry.document.display_name)}
+                          </p>
+                          <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
+                            {entry.latest_version?.sha256 ? shortSha(entry.latest_version.sha256) : '无指纹'}
+                          </p>
+                        </div>
+                        <Badge variant='secondary' className='shrink-0 font-normal'>
+                          {documentStatusLabel(entry.latest_version)}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className='rounded-xl border border-dashed p-4 text-xs leading-relaxed text-muted-foreground/65'>
+                  当前空间还没有建档文件。上传并确认存证后，会进入这里，其他对话也能查到。
+                </div>
+              )}
+              {documentLibrary.totals.uploaded_unversioned_files > 0 ? (
+                <p className='text-xs text-muted-foreground/60'>
+                  另有 {documentLibrary.totals.uploaded_unversioned_files} 个上传过但尚未存证的文件。
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className='rounded-xl border border-dashed p-4 text-xs text-muted-foreground/65'>
+              正在读取当前空间的文件库。
+            </div>
+          )}
+        </div>
+
         {detail?.files.length ? (
           <>
             <Separator />
@@ -311,6 +366,15 @@ function ToolStep({ call }: { call: AgentToolCall }) {
         {JSON.stringify({ input: call.input, output: call.output }, null, 2)}
       </pre>
     </details>
+  )
+}
+
+function LibraryMetric({ label, value }: { label: string; value: number }) {
+  return (
+    <div className='rounded-lg border bg-background/60 px-2 py-2'>
+      <p className='font-semibold text-foreground'>{value}</p>
+      <p className='mt-0.5 text-muted-foreground/60'>{label}</p>
+    </div>
   )
 }
 
@@ -408,6 +472,11 @@ function fileVersionLabel(file: AgentFileContext) {
   if (file.version) return `v${file.version.version_no}`
   if (file.document) return '新版本候选'
   return '无版本'
+}
+
+function documentStatusLabel(version: AgentDocumentLibrary['documents'][number]['latest_version']) {
+  if (!version) return '未存证'
+  return version.proof_id ? `v${version.version_no}` : '未存证'
 }
 
 function proofLabel(
