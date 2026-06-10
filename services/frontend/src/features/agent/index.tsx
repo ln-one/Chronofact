@@ -57,6 +57,7 @@ export default function AgentWorkspace() {
   const [pendingSelectFileId, setPendingSelectFileId] = useState<string | null>(
     null
   )
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const limoraQuery = useQuery({
     queryKey: ['limora', 'chronofact-organization'] as const,
@@ -330,7 +331,13 @@ export default function AgentWorkspace() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className='h-svh w-full'>
-        <div className='grid h-full w-full grid-cols-[18rem_minmax(0,1fr)] overflow-hidden'>
+        <div
+          className={`grid h-full w-full overflow-hidden transition-[grid-template-columns] duration-200 ease-out ${
+            sidebarCollapsed
+              ? 'grid-cols-[4.25rem_minmax(0,1fr)]'
+              : 'grid-cols-[18rem_minmax(0,1fr)]'
+          }`}
+        >
           <div className='h-full min-h-0 min-w-0 overflow-hidden border-r bg-muted/30'>
             <AgentThreadList
               conversations={conversations}
@@ -338,8 +345,12 @@ export default function AgentWorkspace() {
               loading={loading}
               identity={identity}
               organization={activeMembership?.organization ?? null}
+              collapsed={sidebarCollapsed}
               onCreateConversation={() => void createAndOpenConversation()}
               onSelectConversation={openConversation}
+              onToggleSidebar={() =>
+                setSidebarCollapsed((collapsed) => !collapsed)
+              }
             />
           </div>
 
