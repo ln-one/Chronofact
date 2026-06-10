@@ -31,6 +31,7 @@ const queryKeys = {
 export default function AgentWorkspace() {
   const queryClient = useQueryClient()
   const bootstrappedRef = useRef(false)
+  const activeOrganizationRef = useRef<string | null>(null)
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
 
@@ -151,6 +152,14 @@ export default function AgentWorkspace() {
     const file = detail?.files.find((item) => item.file_id === action.file_id)
     return file?.proof_id ? null : action
   }, [detail?.files, detail?.messages])
+
+  useEffect(() => {
+    if (activeOrganizationRef.current === activeOrganizationId) return
+    activeOrganizationRef.current = activeOrganizationId
+    bootstrappedRef.current = false
+    setCurrentConversationId(null)
+    setSelectedFileId(null)
+  }, [activeOrganizationId])
 
   useEffect(() => {
     if (!activeOrganizationId || bootstrappedRef.current || conversationsQuery.isLoading) return
