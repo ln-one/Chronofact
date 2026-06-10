@@ -318,7 +318,12 @@ export function EvidenceConsole({
                                   <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
                                     {shortSha(version.sha256)}
                                   </span>
-                                  <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
+                                  <Badge
+                                    variant={version.proof_id ? 'secondary' : 'outline'}
+                                    className={`shrink-0 font-normal ${
+                                      version.proof_id ? '' : 'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+                                    }`}
+                                  >
                                     {version.proof_id ? '已存证' : '待存证'}
                                   </Badge>
                                 </div>
