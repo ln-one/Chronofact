@@ -790,6 +790,27 @@ test("agent treats unpreserved-file questions as organization library queries", 
   assert.match(assistant.content, /已上传但还没有正式存证/);
   assert.match(assistant.content, /还有 1 个待处理文件没有展开/);
   assert.doesNotMatch(assistant.content, /请先上传/);
+
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_cross_with_file",
+    organization_id: "org_001",
+    title: "带当前文件的文件库查询"
+  });
+  const withCurrentFile = await postJson(`${baseUrl}/agent/runs`, {
+    conversation_id: "conv_cross_with_file",
+    organization_id: "org_001",
+    message: "请分享目前所有存证的文件，有没有有问题的文件",
+    file_id: file.body.file_id
+  });
+  assert.equal(withCurrentFile.status, 202);
+
+  const completedWithFile = await waitForCompletedRun(`${baseUrl}/agent/conversations/conv_cross_with_file`);
+  const assistantWithFile = completedWithFile.body.messages.at(-1);
+  assert.equal(assistantWithFile.status, "completed");
+  assert.equal(assistantWithFile.metadata.action, "library_summary");
+  assert.match(assistantWithFile.content, /1 个已建档文件/);
+  assert.match(assistantWithFile.content, /待处理文件/);
+  assert.doesNotMatch(assistantWithFile.content, /您提交的文件/);
 });
 
 test("agent analyzes uploaded text file content without calling evidence verification", async (t) => {
