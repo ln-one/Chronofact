@@ -171,6 +171,11 @@ export default function AgentWorkspace() {
     })
   }, [detail])
 
+  function openConversation(conversationId: string) {
+    setCurrentConversationId(conversationId)
+    setSelectedFileId(null)
+  }
+
   async function createAndOpenConversation() {
     await createConversationMutation.mutateAsync()
   }
@@ -239,7 +244,7 @@ export default function AgentWorkspace() {
       return uploadFile(conversationId, file)
     },
     onCreateConversation: createAndOpenConversation,
-    onSwitchConversation: setCurrentConversationId,
+    onSwitchConversation: openConversation,
   })
 
   return (
@@ -254,9 +259,7 @@ export default function AgentWorkspace() {
             identity={identity}
             organization={activeMembership?.organization ?? null}
             onCreateConversation={() => void createAndOpenConversation()}
-            onSelectConversation={(conversationId) => {
-              setCurrentConversationId(conversationId)
-            }}
+            onSelectConversation={openConversation}
           />
         </div>
 
