@@ -662,7 +662,7 @@ test("agent can summarize organization document library without a current file",
   assert.equal(completed.body.tool_calls.at(-1).tool_name, "listDocumentLibrary");
 });
 
-test("library overview ignores current conversation files only when no file id is sent", async (t) => {
+test("library overview uses the organization library even when a stale file id is sent", async (t) => {
   const chronofact = await withChronofactStub(t);
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
   t.after(cleanup);
@@ -688,7 +688,8 @@ test("library overview ignores current conversation files only when no file id i
     file_id: file.body.file_id
   });
   assert.equal(fileScoped.status, 200);
-  assert.notEqual(fileScoped.body.action, "library_summary");
+  assert.equal(fileScoped.body.action, "library_summary");
+  assert.match(fileScoped.body.reply, /1 个已建档文件/);
 
   const libraryScoped = await postJson(`${baseUrl}/agent/chat`, {
     conversation_id: "conv_mixed",

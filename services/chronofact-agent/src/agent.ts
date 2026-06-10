@@ -223,7 +223,7 @@ export function createAgentService({
       });
       maybeRenameConversation(store, conversation, parsed.message);
 
-      if (wantsLibraryOverview(parsed.message) && !parsed.file_id) {
+      if (wantsLibraryOverview(parsed.message)) {
         const summary = buildLibrarySummary(store, organizationId);
         const toolCall = store.addToolCall({
           conversationId,
@@ -457,7 +457,7 @@ export function createAgentService({
         return updated;
       };
 
-      if (wantsLibraryOverview(parsed.message) && !parsed.file_id) {
+      if (wantsLibraryOverview(parsed.message)) {
         const summary = buildLibrarySummary(store, organizationId);
         const toolCall = store.addToolCall({
           conversationId,
