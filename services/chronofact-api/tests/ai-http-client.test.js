@@ -42,7 +42,12 @@ test("AI HTTP client sends structured evidence and returns explanation fields", 
       previous_fact_id: null,
       witness_record: {
         tx_hash: "0xabc",
-        recorded_at: "2026-05-13T00:00:00.000Z"
+        recorded_at: "2026-05-13T00:00:00.000Z",
+        chain: {
+          transaction_hash: "0xabc",
+          event_name: "FileVersionRegistered",
+          record_id: "0xrecord"
+        }
       }
     },
     versionHistory: [
@@ -61,6 +66,8 @@ test("AI HTTP client sends structured evidence and returns explanation fields", 
   assert.equal(captured.payload.asset_version.asset_id, "asset_001");
   assert.equal(captured.payload.verification_result.status, "verified");
   assert.equal(captured.payload.receipt.receipt_id, "rcpt_001");
+  assert.equal(captured.payload.chain.transaction_hash, "0xabc");
+  assert.equal(captured.payload.receipt.chain.record_id, "0xrecord");
   assert.equal(captured.payload.version_history[0].version_id, "ver_001");
   assert.deepEqual(result.evidence_basis, ["sha256", "verification_result"]);
 });

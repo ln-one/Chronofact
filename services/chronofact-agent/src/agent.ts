@@ -293,6 +293,14 @@ export function createAgentService({
           });
         }
         if (!parsed.confirmed_action) {
+          if (file.proofId) {
+            return reply(store, conversationId, alreadyPreservedReply(file), {
+              user_message: toMessageContext(userMessage),
+              action: "preserve",
+              file: toFileContext(file),
+              action_required: null
+            });
+          }
           const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
           return reply(
             store,
@@ -397,9 +405,11 @@ export function createAgentService({
           calls.push(toToolCallResponse(explainCall));
         }
 
-        const content = await improveReply({
+        const includeEvidence = wantsEvidenceDetails(parsed.message);
+        const fallback = verificationReply(verification, explanation, { includeEvidence });
+        const content = includeEvidence ? fallback : await improveReply({
           llmClient,
-          fallback: verificationReply(verification, explanation),
+          fallback,
           task: "verify",
           payload: { verification, explanation }
         });
@@ -537,6 +547,14 @@ export function createAgentService({
           return;
         }
         if (!parsed.confirmed_action) {
+          if (file.proofId) {
+            complete(alreadyPreservedReply(file), {
+              action: "preserve",
+              file: toFileContext(file),
+              action_required: null
+            });
+            return;
+          }
           const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
           complete(versionTarget
             ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。这看起来是《${versionTarget.document.displayName}》的新版本，请确认是否作为新版本存证。`
@@ -636,9 +654,11 @@ export function createAgentService({
           calls.push(toToolCallResponse(explainCall));
         }
 
-        const content = await improveReply({
+        const includeEvidence = wantsEvidenceDetails(parsed.message);
+        const fallback = verificationReply(verification, explanation, { includeEvidence });
+        const content = includeEvidence ? fallback : await improveReply({
           llmClient,
-          fallback: verificationReply(verification, explanation),
+          fallback,
           task: "verify",
           payload: { verification, explanation }
         });
@@ -834,6 +854,17 @@ export function createAgentService({
           };
         }
         if (!confirmedAction) {
+          if (file.proofId) {
+            return {
+              content: alreadyPreservedReply(file),
+              extra: {
+                ...extra,
+                file: toFileContext(file),
+                action: "preserve",
+                action_required: null
+              }
+            };
+          }
           const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
           return {
             content: versionTarget
@@ -941,9 +972,11 @@ export function createAgentService({
           });
           calls.push(toToolCallResponse(explainCall));
         }
-        content = await improveReply({
+        const includeEvidence = wantsEvidenceDetails(message);
+        const fallback = verificationReply(verification, explanation, { includeEvidence });
+        content = includeEvidence ? fallback : await improveReply({
           llmClient,
-          fallback: verificationReply(verification, explanation),
+          fallback,
           task: "verify",
           payload: { verification, explanation }
         });
@@ -1172,7 +1205,11 @@ function wantsPreserve(message: string) {
 }
 
 function wantsVerify(message: string) {
-  return /有没有存证|是否存证|存证了吗|验证|校验|核验|改过|篡改|是不是|是否|一样|对比|检查|看看|怎么样|什么问题|verify|check/i.test(message);
+  return /有没有存证|是否存证|存证了吗|已存证|证据|依据|证明|链上记录|交易回执|回执|交易哈希|tx|transaction|receipt|proof|验证|校验|核验|改过|篡改|是不是|是否|一样|对比|检查|看看|怎么样|什么问题|verify|check/i.test(message);
+}
+
+function wantsEvidenceDetails(message: string) {
+  return /证据|依据|证明|链上记录|交易回执|回执|交易哈希|tx|transaction|receipt|proof/i.test(message);
 }
 
 function wantsLibraryOverview(message: string) {
@@ -1423,30 +1460,61 @@ function preserveReply(proof: any) {
   return "已经提交存证，但证明还在确认中。稍后可以再让我检查一次。";
 }
 
-function verificationReply(verification: any, explanation: any) {
+function alreadyPreservedReply(file: StoredFile) {
+  return `\u5f53\u524d\u6587\u4ef6 ${file.filename} \u5df2\u6709\u5b58\u8bc1\u8bb0\u5f55\uff0c\u6307\u7eb9\u662f ${shortSha(file.sha256)}\u3002\u53ef\u4ee5\u76f4\u63a5\u9a8c\u8bc1\u8fd9\u4efd\u6587\u4ef6\uff1b\u5982\u679c\u5185\u5bb9\u6709\u53d8\u5316\uff0c\u8bf7\u4e0a\u4f20\u53d8\u66f4\u540e\u7684\u6587\u4ef6\u4f5c\u4e3a\u65b0\u7248\u672c\u5b58\u8bc1\u3002`;
+}
+
+function verificationReply(verification: any, explanation: any, options: { includeEvidence?: boolean } = {}) {
   const result = verification?.result ?? verification?.status ?? "unknown";
+  const withEvidence = (text: string) => options.includeEvidence ? `${text}\n\n${verificationEvidenceDetails(verification)}` : text;
   if (verification?.agent_classification === "version_candidate") {
     const name = verification?.agent_context?.document_name ?? verification?.agent_context?.filename;
-    return name
+    const reply = name
       ? `这看起来是《${name}》的新版本，还没有为这个版本存证。`
       : "这看起来是一个已有文档的新版本，还没有为这个版本存证。";
+    return withEvidence(reply);
   }
   if (result === "mismatch") {
-    return "这份文件和之前存证的版本不一样。它可能被改过，也可能是你上传了一个新版本。";
+    return withEvidence("这份文件和之前存证的版本不一样。它可能被改过，也可能是你上传了一个新版本。");
   }
   if (explanation?.ai_explanation?.summary) {
-    return `${result}: ${explanation.ai_explanation.summary}`;
+    return withEvidence(`${result}: ${explanation.ai_explanation.summary}`);
   }
   if (result === "preserved") {
-    return "这份文件和之前存证的内容一致。";
+    return withEvidence("这份文件和之前存证的内容一致。");
   }
   if (result === "not_preserved") {
-    return "我没有找到这份文件的存证记录。你可以选择现在为它存证。";
+    return withEvidence("我没有找到这份文件的存证记录。你可以选择现在为它存证。");
   }
   if (result === "mismatch") {
-    return "这份文件和之前存证的版本不一样。";
+    return withEvidence("这份文件和之前存证的版本不一样。");
   }
-  return "我检查完了，但当前证明状态还不够明确，需要稍后重试或查看证明详情。";
+  return withEvidence("我检查完了，但当前证明状态还不够明确，需要稍后重试或查看证明详情。");
+}
+
+function verificationEvidenceDetails(verification: any) {
+  const proof = verification?.proof ?? verification?.target?.proof ?? {};
+  const chain = proof.chain ?? verification?.chain ?? {};
+  const context = verification?.agent_context ?? {};
+  const lines = ["判断依据："];
+  if (proof.proof_id ?? verification?.proof_id) lines.push(`- proof: ${proof.proof_id ?? verification.proof_id}`);
+  if (proof.fact_id) lines.push(`- record: ${proof.fact_id}`);
+  if (chain.transaction_hash ?? proof.transaction_hash ?? proof.tx_hash) {
+    lines.push(`- tx: ${chain.transaction_hash ?? proof.transaction_hash ?? proof.tx_hash}`);
+  }
+  if (chain.block_number !== undefined && chain.block_number !== null) lines.push(`- block: ${chain.block_number}`);
+  if (chain.contract_address) lines.push(`- contract: ${chain.contract_address}`);
+  if (chain.previous_version && !isZeroHash(chain.previous_version)) lines.push(`- previous_version: ${chain.previous_version}`);
+  if (context.document_version_id) lines.push(`- document_version: ${context.document_version_id}`);
+  if (context.compared_to_sha256) lines.push(`- compared_sha256: ${shortSha(context.compared_to_sha256)}`);
+  if (verification?.sha256 ?? verification?.submitted_sha256) {
+    lines.push(`- current_sha256: ${shortSha(verification.sha256 ?? verification.submitted_sha256)}`);
+  }
+  return lines.length > 1 ? lines.join("\n") : "判断依据：当前文件 SHA-256 与存证记录的 digest 比对结果。";
+}
+
+function isZeroHash(value: string) {
+  return /^0x0{64}$/i.test(value);
 }
 
 function buildLibrarySummary(store: AgentStore, organizationId: string) {
@@ -1833,6 +1901,7 @@ function normalizePreserveResult(proof: any, mode: "preserve" | "version") {
       receipt_id: witnessRecord?.receipt_id ?? null,
       anchor_status: witnessRecord?.anchor_status ?? null,
       transaction_hash: witnessRecord?.tx_hash ?? null,
+      chain: witnessRecord?.chain ?? preservationRecord?.chain ?? null,
       receipt_status: verificationResult?.receipt_status ?? null,
       trace_status: verificationResult?.trace_status ?? null,
       verification_status: verificationResult?.status ?? null,

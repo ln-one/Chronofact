@@ -1,6 +1,7 @@
 import { normalizeSha256Hex, toContentBuffer, sha256Hex } from "./digest.js";
 import { ChronofactError } from "./errors.js";
 import { assertChronofactAdapters } from "./adapters/contracts.js";
+import { normalizeChainEvidence } from "./chainEvidence.js";
 
 export const CHRONOFACT_EVIDENCE_PERMISSIONS = {
   create: "chronofact.evidence.create",
@@ -1038,13 +1039,18 @@ function contentSize(content) {
 function preservationStatusFromVerification(verificationResult) {
   if (verificationResult.status === "verified") return "preserved";
   if (verificationResult.status === "pending") return "pending";
+  if (["chain_unavailable", "contract_unavailable", "transaction_failed"].includes(verificationResult.failure_reason)) {
+    return "proof_unavailable";
+  }
   return "failed";
 }
 
 function evidenceVerificationResult(verificationResult) {
   if (verificationResult.status === "verified") return "preserved";
   if (verificationResult.status === "pending") return "pending";
-  if (verificationResult.failure_reason === "chain_unavailable") return "proof_unavailable";
+  if (["chain_unavailable", "contract_unavailable", "transaction_failed"].includes(verificationResult.failure_reason)) {
+    return "proof_unavailable";
+  }
   return "proof_unavailable";
 }
 
@@ -1071,12 +1077,14 @@ function evidenceVersionSummary(version, uploadRecord = null) {
 }
 
 function proofSummary(witnessRecord, verificationResult) {
+  const chain = normalizeChainEvidence({ witnessRecord, verificationResult });
   return {
     provider: witnessRecord.provider ?? "chronestia",
     fact_id: witnessRecord.fact_id,
     receipt_id: witnessRecord.receipt_id,
     anchor_status: witnessRecord.anchor_status,
     transaction_hash: witnessRecord.tx_hash ?? null,
+    chain,
     receipt_status: verificationResult.receipt_status,
     trace_status: verificationResult.trace_status,
     verification_status: verificationResult.status,
@@ -1097,6 +1105,7 @@ function evidenceMatchSummary(version, preservationRecord) {
     created_at: version.created_at,
     submitted_by: version.submitter_id,
     receipt_status: preservationRecord?.verification_status ?? null,
-    anchor_status: preservationRecord?.anchor_status ?? null
+    anchor_status: preservationRecord?.anchor_status ?? null,
+    chain: preservationRecord?.chain ?? version.witness_record?.chain ?? null
   };
 }

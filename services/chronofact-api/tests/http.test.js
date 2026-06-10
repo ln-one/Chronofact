@@ -92,6 +92,21 @@ test("health exposes active adapter runtime", async (t) => {
   assert.equal(body.runtime.ai.mode, "http");
 });
 
+test("health exposes course EVM runtime when Ganache adapter is configured", async (t) => {
+  const baseUrl = await withServer(t, {
+    CHRONOFACT_COURSE_EVM_URL: "http://127.0.0.1:7545",
+    CHRONOFACT_REGISTRY_ADDRESS: "0x0000000000000000000000000000000000000001"
+  });
+
+  const response = await fetch(`${baseUrl}/health`);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.runtime.chronestia.mode, "course_evm");
+  assert.equal(body.runtime.chronestia.url, "http://127.0.0.1:7545");
+  assert.equal(body.runtime.chronestia.contract_address, "0x0000000000000000000000000000000000000001");
+});
+
 test("HTTP API supports submit, version, detail, and verify flows", async (t) => {
   const baseUrl = await withServer(t);
 
@@ -171,6 +186,9 @@ test("HTTP organization evidence APIs preserve and verify by hash", async (t) =>
   assert.equal(preserved.status, 201);
   assert.equal(preserved.body.status, "preserved");
   assert.equal(preserved.body.sha256, "0682c5f2076f099c34cfdd15a9e063849ed437a49677e6fcc5b4198c76575be5");
+  assert.equal(preserved.body.proof.chain.event_name, "FileVersionRegistered");
+  assert.equal(preserved.body.proof.chain.digest, preserved.body.sha256);
+  assert.equal(preserved.body.preservation_record.chain.transaction_hash, preserved.body.proof.transaction_hash);
 
   const found = await postJson(`${baseUrl}/organizations/org-1/evidence/verify`, {
     content_text: "original"

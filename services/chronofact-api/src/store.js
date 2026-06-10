@@ -379,6 +379,7 @@ export function createInMemoryStore({ clock = () => new Date() } = {}) {
         fact_id: witnessRecord.fact_id,
         receipt_id: witnessRecord.receipt_id,
         anchor_status: witnessRecord.anchor_status,
+        chain: witnessRecord.chain ?? null,
         verification_status: verificationResult.status,
         failure_reason: verificationResult.failure_reason,
         created_at: clock().toISOString()

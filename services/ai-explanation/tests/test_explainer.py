@@ -31,5 +31,20 @@ class ExplainerTest(unittest.TestCase):
         self.assertIn("不能按已验证状态展示", result["summary"])
 
 
+    def test_chain_evidence_is_named_in_basis(self):
+        payload = json.loads((ROOT / "mock" / "verified.json").read_text(encoding="utf-8"))
+        payload["chain"] = {
+            "transaction_hash": "0xabc",
+            "event_name": "FileVersionRegistered",
+            "record_id": "0xrecord",
+            "block_number": 12,
+        }
+        result = explain_evidence(payload)
+        self.assertIn("transaction_hash", result["evidence_basis"])
+        self.assertIn("contract_event", result["evidence_basis"])
+        self.assertIn("record_id", result["evidence_basis"])
+        self.assertIn("block_number", result["evidence_basis"])
+
+
 if __name__ == "__main__":
     unittest.main()

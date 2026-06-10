@@ -530,6 +530,69 @@ test("confirmed preserve calls Chronofact API and records tool call output", asy
   assert.equal(chronofact.requests[0].body.sha256, file.body.sha256);
 });
 
+test("preserve request for an already preserved file does not ask for confirmation again", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "preserve this file",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "preserve this file",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.action_required, null);
+  assert.equal(chat.body.tool_calls.length, 0);
+  assert.match(chat.body.reply, /report\.txt/);
+  assert.equal(chronofact.requests.length, 1);
+});
+
+test("evidence detail requests verify the current preserved file", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "preserve this file",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_001",
+    organization_id: "org_001",
+    message: "我要看证据",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.action, "verify");
+  assert.equal(chat.body.tool_calls[0].tool_name, "verifyEvidence");
+  assert.match(chat.body.reply, /判断依据/);
+});
+
 test("organization document library is shared across conversations by digest", async (t) => {
   const chronofact = await withChronofactStub(t);
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });

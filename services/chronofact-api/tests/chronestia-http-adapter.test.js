@@ -81,6 +81,9 @@ test("Chronestia HTTP adapter registers asset versions as Chronestia facts", asy
   assert.equal(result.receipt_id, "dev://fact_123");
   assert.equal(result.anchor_status, "confirmed");
   assert.equal(result.tx_hash, "0xdef");
+  assert.equal(result.chain.transaction_hash, "0xdef");
+  assert.equal(result.chain.event_name, "FileVersionRegistered");
+  assert.equal(result.chain.record_id, "fact_123");
 });
 
 test("Chronestia HTTP adapter maps verification states into Chronofact status vocabulary", async () => {

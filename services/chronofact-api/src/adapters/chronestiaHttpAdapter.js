@@ -150,17 +150,38 @@ function toWitnessRecord(result, previousFactId) {
   const receipt = result.receipt ?? {};
   const registration = result.registration ?? {};
   const fact = result.fact ?? {};
+  const payload = receipt.provider_payload ?? {};
+  const txHash = payload.tx_hash ?? payload.transaction_hash ?? receipt.anchor_ref ?? null;
+  const recordId =
+    payload.record_id ?? payload.recordId ?? receipt.record_id ?? receipt.fact_id ?? fact.id ?? result.fact_id ?? null;
 
   return {
     fact_id: result.fact_id ?? fact.id,
     receipt_id: receipt.anchor_ref ?? receipt.fact_id ?? result.fact_id ?? fact.id,
     anchor_status: result.anchor_status ?? receipt.anchor_status ?? registration.status ?? "unknown",
-    tx_hash: receipt.provider_payload?.tx_hash ?? receipt.provider_payload?.transaction_hash ?? receipt.anchor_ref ?? null,
+    tx_hash: txHash,
     recorded_at: registration.accepted_at ?? receipt.updated_at ?? fact.created_at ?? new Date().toISOString(),
     previous_fact_id: fact.previous_fact_id ?? previousFactId ?? null,
     fact_digest: result.fact_digest ?? receipt.fact_digest ?? fact.fact_digest,
     provider: receipt.provider,
-    provider_payload: receipt.provider_payload ?? {}
+    chain: {
+      provider: receipt.provider ?? payload.provider ?? "chronestia",
+      chain_id: payload.chain_id ?? payload.chainId ?? null,
+      contract_address: payload.contract_address ?? payload.contractAddress ?? null,
+      transaction_hash: txHash,
+      block_number: payload.block_number ?? payload.blockNumber ?? null,
+      gas_used: payload.gas_used ?? payload.gasUsed ?? null,
+      transaction_status: payload.transaction_status ?? payload.status ?? null,
+      event_name: payload.event_name ?? payload.eventName ?? "FileVersionRegistered",
+      record_id: recordId,
+      digest: payload.digest ?? payload.sha256 ?? null,
+      version_no: payload.version_no ?? payload.versionNo ?? null,
+      submitter: payload.submitter ?? null,
+      previous_version: payload.previous_version ?? payload.previousVersion ?? previousFactId ?? null,
+      timestamp: payload.timestamp ?? null,
+      anchor_status: result.anchor_status ?? receipt.anchor_status ?? registration.status ?? "unknown"
+    },
+    provider_payload: payload
   };
 }
 

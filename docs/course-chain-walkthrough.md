@@ -65,6 +65,16 @@ Register a sample file version:
 npm run contracts:sample
 ```
 
+Register a two-version chain demo:
+
+```powershell
+npm run contracts:sample:versions
+```
+
+The two-version demo prints a JSON object with `v1` and `v2` transaction
+hashes, receipt blocks, event fields, and a check that `v2.previous_version`
+points to the `v1.record_id`.
+
 Expected output includes:
 
 - deploy transaction hash
@@ -143,3 +153,82 @@ For the course demo, capture these evidence fields:
 
 These fields are evidence surfaces for Chronofact and the AI explanation layer.
 The AI explanation layer may summarize them, but it is not the proof source.
+
+## Connect The Course Chain To Chronofact API
+
+The main Chronofact app can run in three witness modes:
+
+- default mock witness adapter
+- Chronestia HTTP adapter through `CHRONOFACT_CHRONESTIA_URL`
+- course EVM adapter through Ganache and `ChronofactRegistry`
+
+To use the course Solidity contract in the current product flow:
+
+1. Start Ganache.
+2. Deploy `ChronofactRegistry`.
+3. Copy the deployed contract address from
+   `deployments/ganache/ChronofactRegistry.json`.
+4. Start `services/chronofact-api` with:
+
+```powershell
+$env:CHRONOFACT_COURSE_EVM_URL="http://127.0.0.1:7545"
+$env:CHRONOFACT_REGISTRY_ADDRESS="<deployed contract address>"
+$env:CHRONOFACT_AI_URL="http://127.0.0.1:8000"
+npm --prefix services/chronofact-api start
+```
+
+When this adapter is enabled, a user preserve action follows this path:
+
+```text
+frontend upload
+-> chronofact-agent
+-> chronofact-api
+-> ChronofactRegistry.registerVersion
+-> transaction receipt + FileVersionRegistered event
+-> frontend chain record card
+-> AI evidence_basis
+```
+
+The API returns a normalized `chain` object:
+
+```json
+{
+  "provider": "ganache",
+  "chain_id": "1337",
+  "contract_address": "0x...",
+  "transaction_hash": "0x...",
+  "block_number": 12,
+  "gas_used": "123456",
+  "transaction_status": "success",
+  "event_name": "FileVersionRegistered",
+  "record_id": "0x...",
+  "digest": "0x...",
+  "version_no": 2,
+  "submitter": "0x...",
+  "previous_version": "0x...",
+  "timestamp": "1710000000"
+}
+```
+
+Frontend displays this data in the chain record panel. The AI explanation layer
+may cite `transaction_hash`, `contract_event`, `block_number`, and `record_id`
+inside `evidence_basis`, but it must still state that proof comes from
+structured records and chain output, not from AI.
+
+## Failure States
+
+The course chain path must not silently convert infrastructure failure into a
+successful notarization.
+
+- Ganache not running: `chain_unavailable`
+- `CHRONOFACT_REGISTRY_ADDRESS` missing: `contract_unavailable`
+- reverted or failed transaction: `transaction_failed`
+- missing receipt or record: `proof_missing`
+- digest comparison failure: `digest_mismatch`
+
+For demo recovery:
+
+1. Check Ganache is listening on `CHAIN_RPC_URL`.
+2. Check `CHRONOFACT_REGISTRY_ADDRESS` matches the latest deployment.
+3. Re-run `npm run contracts:deploy:ganache` if Ganache was restarted.
+4. Restart `services/chronofact-api` so it reads the updated environment.

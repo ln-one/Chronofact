@@ -363,7 +363,13 @@ function createHandler(orchestrator, runtime) {
 
 function describeRuntime(env) {
   return {
-    chronestia: env.CHRONOFACT_CHRONESTIA_URL
+    chronestia: env.CHRONOFACT_COURSE_EVM_URL
+      ? {
+          mode: "course_evm",
+          url: env.CHRONOFACT_COURSE_EVM_URL,
+          contract_address: env.CHRONOFACT_REGISTRY_ADDRESS ?? null
+        }
+      : env.CHRONOFACT_CHRONESTIA_URL
       ? {
           mode: "http",
           url: env.CHRONOFACT_CHRONESTIA_URL

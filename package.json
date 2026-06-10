@@ -8,6 +8,7 @@
     "contracts:compile": "node scripts/compile_contract.js",
     "contracts:deploy:ganache": "node scripts/deploy_contract.js",
     "contracts:sample": "node scripts/register_sample_version.js",
+    "contracts:sample:versions": "node scripts/register_multiversion_chain_demo.js",
     "e2e:agent:up": "bash scripts/agent_e2e_stack.sh up",
     "e2e:agent:smoke": "node scripts/agent_e2e_smoke.mjs",
     "e2e:agent:down": "bash scripts/agent_e2e_stack.sh down",

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { createAiExplanationHttpClient } from "../aiHttpClient.js";
 import { assertChronofactAdapters } from "./contracts.js";
 import { createChronestiaHttpAdapter } from "./chronestiaHttpAdapter.js";
+import { createCourseEvmAdapter } from "./courseEvmAdapter.js";
 import { createDualweaveHttpAdapter } from "./dualweaveHttpAdapter.js";
 import { createLimoraHttpAdapter } from "./limoraHttpAdapter.js";
 import {
@@ -28,7 +29,13 @@ export function createChronofactAdapters({ env = process.env, storageDir } = {})
           timeoutMs: Number(env.CHRONOFACT_DUALWEAVE_TIMEOUT_MS || 0) || timeoutMs || 30000
         })
       : createDualweaveMockAdapter({ storageDir }),
-    chronestia: env.CHRONOFACT_CHRONESTIA_URL
+    chronestia: env.CHRONOFACT_COURSE_EVM_URL
+      ? createCourseEvmAdapter({
+          rpcUrl: env.CHRONOFACT_COURSE_EVM_URL,
+          contractAddress: env.CHRONOFACT_REGISTRY_ADDRESS,
+          privateKey: env.CHAIN_PRIVATE_KEY
+        })
+      : env.CHRONOFACT_CHRONESTIA_URL
       ? createChronestiaHttpAdapter({
           baseUrl: env.CHRONOFACT_CHRONESTIA_URL,
           timeoutMs: Number(env.CHRONOFACT_CHRONESTIA_TIMEOUT_MS || 0) || timeoutMs || 5000

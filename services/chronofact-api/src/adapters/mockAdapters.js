@@ -78,13 +78,42 @@ export function createChronestiaMockAdapter({ clock = () => new Date() } = {}) {
       }
 
       const factId = `fact_${assetVersion.version_id}`;
+      const txHash = `0xmock${assetVersion.version_id.replace(/[^\da-z]/gi, "").padEnd(8, "0")}`;
+      const recordId = `0x${assetVersion.version_id.replace(/[^\da-f]/gi, "").padEnd(64, "0").slice(0, 64)}`;
       return {
         fact_id: factId,
         receipt_id: `rcpt_${assetVersion.version_id}`,
         anchor_status: "recorded",
-        tx_hash: `0xmock${assetVersion.version_id.replace(/[^\da-z]/gi, "").padEnd(8, "0")}`,
+        tx_hash: txHash,
         recorded_at: clock().toISOString(),
-        previous_fact_id: previousFactId ?? null
+        previous_fact_id: previousFactId ?? null,
+        provider: "chronestia-demo",
+        chain: {
+          provider: "chronestia-demo",
+          chain_id: "demo",
+          contract_address: null,
+          transaction_hash: txHash,
+          block_number: null,
+          gas_used: null,
+          transaction_status: "recorded",
+          event_name: "FileVersionRegistered",
+          record_id: recordId,
+          digest: assetVersion.sha256,
+          version_no: assetVersion.version_no,
+          submitter: assetVersion.submitter_id,
+          previous_version: previousFactId ?? null,
+          timestamp: Math.floor(clock().getTime() / 1000),
+          anchor_status: "recorded"
+        },
+        provider_payload: {
+          transaction_hash: txHash,
+          event_name: "FileVersionRegistered",
+          record_id: recordId,
+          digest: assetVersion.sha256,
+          version_no: assetVersion.version_no,
+          submitter: assetVersion.submitter_id,
+          previous_version: previousFactId ?? null
+        }
       };
     },
 
@@ -140,6 +169,15 @@ export function createAiExplanationMockAdapter() {
       ];
       if (versionHistory.length > 0) {
         basis.push("version history");
+      }
+      if (assetVersion?.witness_record?.chain?.transaction_hash) {
+        basis.push("transaction hash");
+      }
+      if (assetVersion?.witness_record?.chain?.event_name) {
+        basis.push("contract event");
+      }
+      if (assetVersion?.witness_record?.chain?.record_id) {
+        basis.push("recordId");
       }
 
       const versionContext = versionHistory.length > 1

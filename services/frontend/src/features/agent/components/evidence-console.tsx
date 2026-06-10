@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { useDropzone } from 'react-dropzone'
 import {
   AlertTriangle,
@@ -22,6 +22,7 @@ import type {
   AgentFileContext,
   AgentHealth,
   AgentToolCall,
+  RuntimeAdapterStatus,
 } from '../agent-api'
 import type { LimoraOrganization } from '@/features/auth/limora-api'
 import { getAgentApiBaseUrl } from '../agent-api'
@@ -226,8 +227,13 @@ export function EvidenceConsole({
                     <StatusRow label='tx' value={blockchainProof.transactionHash} monospace />
                     <StatusRow label='contract' value={blockchainProof.contractAddress} monospace />
                     <StatusRow label='block' value={blockchainProof.blockNumber} monospace />
-                  </div>
+                  <StatusRow label='event' value={blockchainProof.eventName} monospace />
+                  <StatusRow label='record' value={blockchainProof.recordId} monospace />
+                  <StatusRow label='prev record' value={blockchainProof.previousVersion} monospace />
+                  <StatusRow label='prev version' value={blockchainProof.previousVersionId} monospace />
+                  <StatusRow label='receipt' value={blockchainProof.receiptStatus} monospace />
                 </div>
+              </div>
               ) : null}
 
               {pendingAction?.file_id === selectedFile.file_id && (
@@ -657,17 +663,33 @@ function anchorStatus(snapshot: ReturnType<typeof latestProofForFile>) {
 function chainProof(snapshot: ReturnType<typeof latestProofForFile>) {
   const proof = snapshot?.snapshot?.proof as Record<string, unknown> | undefined
   const payload = proof?.provider_payload as Record<string, unknown> | undefined
-  const transactionHash = String(proof?.transaction_hash ?? payload?.transaction_hash ?? '')
-  const contractAddress = String(payload?.contract_address ?? '')
-  const blockNumber = payload?.block_number === undefined ? '' : String(payload.block_number)
-  const provider = String(proof?.provider ?? payload?.provider ?? '')
-  if (!transactionHash && !contractAddress && !blockNumber) return null
+  const chain = (proof?.chain ?? payload?.chain ?? payload) as Record<string, unknown> | undefined
+  const transactionHash = String(proof?.transaction_hash ?? chain?.transaction_hash ?? payload?.transaction_hash ?? '')
+  const contractAddress = String(chain?.contract_address ?? payload?.contract_address ?? '')
+  const blockNumber = chain?.block_number === undefined ? '' : String(chain.block_number)
+  const provider = String(proof?.provider ?? chain?.provider ?? payload?.provider ?? '')
+  const recordId = String(chain?.record_id ?? payload?.record_id ?? proof?.fact_id ?? '')
+  const previousVersion = String(chain?.previous_version ?? payload?.previous_version ?? '')
+  const assetVersion = (snapshot?.snapshot?.asset_version ?? snapshot?.snapshot?.version) as Record<string, unknown> | undefined
+  const previousVersionId = String(assetVersion?.previous_version_id ?? '')
+  const eventName = String(chain?.event_name ?? payload?.event_name ?? '')
+  const receiptStatus = String(chain?.receipt_status ?? proof?.receipt_status ?? '')
+  if (!transactionHash && !contractAddress && !blockNumber && !recordId && !previousVersion && !eventName) return null
   return {
     provider: provider || 'chain',
     transactionHash: transactionHash || '无',
     contractAddress: contractAddress || '无',
     blockNumber: blockNumber || '待确认',
+    recordId: recordId || '无',
+    previousVersion: previousVersion && !isZeroHash(previousVersion) ? previousVersion : '无',
+    previousVersionId: previousVersionId || '无',
+    eventName: eventName || '无',
+    receiptStatus: receiptStatus || 'unknown',
   }
+}
+
+function isZeroHash(value: string) {
+  return /^0x0{64}$/i.test(value)
 }
 
 function runtimeChainStatus(agentHealth: AgentHealth | null) {
@@ -685,6 +707,18 @@ function runtimeChainStatus(agentHealth: AgentHealth | null) {
     }
   }
   const chronestia = api.runtime?.chronestia
+  if (chronestia?.mode === 'course_evm') {
+    const contractAddress = String(
+      (chronestia as RuntimeAdapterStatus & { contract_address?: string | null })
+        .contract_address ?? ''
+    )
+    return {
+      backend: 'Ganache course chain',
+      detail: contractAddress
+        ? `contract ${contractAddress}`
+        : 'contract address not configured',
+    }
+  }
   if (chronestia?.mode === 'http') {
     return {
       backend: 'Chronestia HTTP',

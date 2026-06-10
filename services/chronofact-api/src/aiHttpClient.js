@@ -76,8 +76,10 @@ function toEvidencePayload({ verificationResult, assetVersion, versionHistory = 
       receipt_id: assetVersion.receipt_id,
       status: verificationResult.receipt_status,
       transaction_hash: witness.tx_hash,
-      recorded_at: witness.recorded_at
+      recorded_at: witness.recorded_at,
+      chain: witness.chain ?? null
     },
+    chain: witness.chain ?? null,
     trace: {
       trace_id: assetVersion.fact_id,
       status: verificationResult.trace_status,

@@ -35,6 +35,7 @@ def explain_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     verification = evidence.get("verification_result") or evidence.get("verification") or {}
     asset_version = evidence.get("asset_version") or evidence.get("asset_metadata") or {}
     receipt = evidence.get("receipt") or evidence.get("registration") or {}
+    chain = evidence.get("chain") or receipt.get("chain") or {}
     trace = evidence.get("trace") or {}
     version_history = evidence.get("version_history") or []
 
@@ -45,7 +46,7 @@ def explain_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     failure_reason = str(verification.get("failure_reason") or "").lower()
 
     context = _context(asset_version, receipt, trace, version_history)
-    evidence_basis = _evidence_basis(asset_version, receipt, trace, verification, version_history)
+    evidence_basis = _evidence_basis(asset_version, receipt, chain, trace, verification, version_history)
 
     if digest_match is False or "digest mismatch" in failure_reason:
         response = _digest_mismatch(context, evidence_basis)
@@ -95,6 +96,7 @@ def _context(
 def _evidence_basis(
     asset_version: dict[str, Any],
     receipt: dict[str, Any],
+    chain: dict[str, Any],
     trace: dict[str, Any],
     verification: dict[str, Any],
     version_history: list[Any],
@@ -104,6 +106,14 @@ def _evidence_basis(
         basis.append("sha256")
     if receipt:
         basis.append("receipt")
+    if chain.get("transaction_hash"):
+        basis.append("transaction_hash")
+    if chain.get("event_name") or chain.get("record_id"):
+        basis.append("contract_event")
+    if chain.get("block_number"):
+        basis.append("block_number")
+    if chain.get("record_id"):
+        basis.append("record_id")
     if trace:
         basis.append("trace")
     if verification:
