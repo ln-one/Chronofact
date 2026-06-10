@@ -1,21 +1,24 @@
-import { createFileRoute, Outlet, useMatches } from '@tanstack/react-router'
-import { AuthenticatedLayout } from '@/components/layout/authenticated-layout'
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+} from '@tanstack/react-router'
+import { getCurrentLimoraSession } from '@/features/auth/limora-api'
 
 function AuthenticatedRouteLayout() {
-  const matches = useMatches()
-  const isImmersiveRoute = matches.some((match) =>
-    match.pathname.startsWith('/agent')
-  )
-  const currentMatch = matches[matches.length - 1]
-  const isLandingRoute = currentMatch?.pathname === '/'
-
-  if (isLandingRoute || isImmersiveRoute) {
-    return <Outlet />
-  }
-
-  return <AuthenticatedLayout />
+  return <Outlet />
 }
 
 export const Route = createFileRoute('/_authenticated')({
+  beforeLoad: async ({ location }) => {
+    try {
+      await getCurrentLimoraSession()
+    } catch {
+      throw redirect({
+        to: '/sign-in',
+        search: { redirect: location.href },
+      })
+    }
+  },
   component: AuthenticatedRouteLayout,
 })
