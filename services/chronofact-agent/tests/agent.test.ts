@@ -759,6 +759,14 @@ test("agent treats unpreserved-file questions as organization library queries", 
     filename: "draft.txt",
     content_base64: Buffer.from("not preserved yet").toString("base64")
   });
+  for (let index = 2; index <= 6; index += 1) {
+    await postJson(`${baseUrl}/agent/files`, {
+      conversation_id: `conv_draft_${index}`,
+      organization_id: "org_001",
+      filename: `draft-${index}.txt`,
+      content_base64: Buffer.from(`not preserved yet ${index}`).toString("base64")
+    });
+  }
 
   await postJson(`${baseUrl}/agent/conversations`, {
     conversation_id: "conv_cross",
@@ -778,8 +786,9 @@ test("agent treats unpreserved-file questions as organization library queries", 
   assert.equal(assistant.metadata.action, "library_summary");
   assert.match(assistant.content, /1 个已建档文件/);
   assert.match(assistant.content, /report\.txt/);
-  assert.match(assistant.content, /draft\.txt/);
+  assert.match(assistant.content, /draft-6\.txt/);
   assert.match(assistant.content, /已上传但还没有正式存证/);
+  assert.match(assistant.content, /还有 1 个待处理文件没有展开/);
   assert.doesNotMatch(assistant.content, /请先上传/);
 });
 

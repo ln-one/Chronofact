@@ -1025,8 +1025,10 @@ function librarySummaryReply(summary: ReturnType<typeof buildLibrarySummary>) {
   if (uploaded_unversioned_files > 0) {
     lines.push(`另外还有 ${uploaded_unversioned_files} 个上传过但尚未进入版本链的文件。`);
   }
-  const pendingDocuments = summary.documents.filter((document) => !document.preserved).slice(0, 5);
-  const pendingUploads = summary.unversioned_files.slice(0, 5);
+  const allPendingDocuments = summary.documents.filter((document) => !document.preserved);
+  const allPendingUploads = summary.unversioned_files;
+  const pendingDocuments = allPendingDocuments.slice(0, 5);
+  const pendingUploads = allPendingUploads.slice(0, 5);
   if (pendingDocuments.length > 0 || pendingUploads.length > 0) {
     lines.push("待处理文件：");
     for (const document of pendingDocuments) {
@@ -1034,6 +1036,10 @@ function librarySummaryReply(summary: ReturnType<typeof buildLibrarySummary>) {
     }
     for (const file of pendingUploads) {
       lines.push(`- ${file.filename}: 已上传但还没有正式存证，${shortSha(file.sha256)}`);
+    }
+    const hiddenPending = allPendingDocuments.length + allPendingUploads.length - pendingDocuments.length - pendingUploads.length;
+    if (hiddenPending > 0) {
+      lines.push(`还有 ${hiddenPending} 个待处理文件没有展开。`);
     }
   } else {
     lines.push("当前没有发现待存证文件。");
