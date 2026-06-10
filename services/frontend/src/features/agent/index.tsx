@@ -191,10 +191,20 @@ export default function AgentWorkspace() {
     toast.success('文件已进入当前对话')
   }
 
-  async function handleSend({ message, file }: { message: string; file?: File | null }) {
+  async function handleSend({
+    message,
+    file,
+    ignoreSelectedFile = false,
+  }: {
+    message: string
+    file?: File | null
+    ignoreSelectedFile?: boolean
+  }) {
     const conversationId = await ensureConversation()
     const uploaded = file ? await uploadFile(conversationId, file) : null
-    const fileId = uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id
+    const fileId = ignoreSelectedFile
+      ? undefined
+      : uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id
     await runMutation.mutateAsync({
       conversationId,
       organizationId: activeOrganizationId!,
@@ -274,7 +284,10 @@ export default function AgentWorkspace() {
             onSelectFile={setSelectedFileId}
             onUploadFile={(file) => void handleUploadOnly(file)}
             onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
-            onAnalyzeLibrary={() => void handleSend({ message: '帮我分析当前空间所有文件的存证情况' })}
+            onAnalyzeLibrary={() => void handleSend({
+              message: '帮我分析当前空间所有文件的存证情况',
+              ignoreSelectedFile: true,
+            })}
           />
         </div>
       </div>

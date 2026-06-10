@@ -599,6 +599,44 @@ test("agent can summarize organization document library without a current file",
   assert.equal(completed.body.tool_calls.at(-1).tool_name, "listDocumentLibrary");
 });
 
+test("library overview ignores current conversation files only when no file id is sent", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_mixed",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_mixed",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  const fileScoped = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_mixed",
+    organization_id: "org_001",
+    message: "帮我分析当前空间所有文件的存证情况",
+    file_id: file.body.file_id
+  });
+  assert.equal(fileScoped.status, 200);
+  assert.notEqual(fileScoped.body.action, "library_summary");
+
+  const libraryScoped = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_mixed",
+    organization_id: "org_001",
+    message: "帮我分析当前空间所有文件的存证情况"
+  });
+  assert.equal(libraryScoped.status, 200);
+  assert.equal(libraryScoped.body.action, "library_summary");
+  assert.match(libraryScoped.body.reply, /1 个已建档文件/);
+});
+
 test("organization document library API lists files across conversations", async (t) => {
   const chronofact = await withChronofactStub(t);
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
