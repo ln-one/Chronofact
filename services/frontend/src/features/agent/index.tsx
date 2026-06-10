@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { useDefaultLayout } from 'react-resizable-panels'
 import { toast } from 'sonner'
+import {
+  ResizableHandle,
+  ResizablePanel,
+  ResizablePanelGroup,
+} from '@/components/ui/resizable'
+import { ensureChronofactOrganization } from '@/features/auth/limora-api'
 import {
   createAgentConversation,
   getAgentDocumentLibrary,
@@ -14,10 +21,9 @@ import {
   type AgentActionRequired,
   type AgentConversationDetail,
 } from './agent-api'
-import { ensureChronofactOrganization } from '@/features/auth/limora-api'
 import { useChronofactAssistantRuntime } from './agent-runtime'
-import { AgentThreadList } from './components/agent-thread-list'
 import { AgentChatPanel } from './components/agent-chat-panel'
+import { AgentThreadList } from './components/agent-thread-list'
 import { EvidenceConsole } from './components/evidence-console'
 
 const queryKeys = {
@@ -29,13 +35,23 @@ const queryKeys = {
     ['chronofact-agent', 'conversation', conversationId] as const,
 }
 
+const agentWorkspacePanelIds = ['agent-chat', 'evidence-console']
+
 export default function AgentWorkspace() {
   const queryClient = useQueryClient()
+  const panelLayout = useDefaultLayout({
+    id: 'chronofact-agent-workspace',
+    panelIds: agentWorkspacePanelIds,
+  })
   const bootstrappedRef = useRef(false)
   const activeOrganizationRef = useRef<string | null>(null)
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const [currentConversationId, setCurrentConversationId] = useState<
+    string | null
+  >(null)
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null)
-  const [pendingSelectFileId, setPendingSelectFileId] = useState<string | null>(null)
+  const [pendingSelectFileId, setPendingSelectFileId] = useState<string | null>(
+    null
+  )
 
   const limoraQuery = useQuery({
     queryKey: ['limora', 'chronofact-organization'] as const,
@@ -70,7 +86,8 @@ export default function AgentWorkspace() {
 
   const detailQuery = useQuery({
     queryKey: queryKeys.detail(currentConversationId),
-    queryFn: () => getAgentConversation(currentConversationId!, activeOrganizationId!),
+    queryFn: () =>
+      getAgentConversation(currentConversationId!, activeOrganizationId!),
     enabled: Boolean(currentConversationId && activeOrganizationId),
     staleTime: 0,
     refetchInterval: (query) =>
@@ -81,7 +98,8 @@ export default function AgentWorkspace() {
 
   const createConversationMutation = useMutation({
     mutationFn: () => {
-      if (!activeOrganizationId) throw new Error('当前账号还没有可用的组织空间。')
+      if (!activeOrganizationId)
+        throw new Error('当前账号还没有可用的组织空间。')
       return createAgentConversation({ organizationId: activeOrganizationId })
     },
     onSuccess: async (conversation) => {
@@ -93,8 +111,15 @@ export default function AgentWorkspace() {
   })
 
   const uploadMutation = useMutation({
-    mutationFn: async ({ conversationId, file }: { conversationId: string; file: File }) => {
-      if (!activeOrganizationId) throw new Error('当前账号还没有可用的组织空间。')
+    mutationFn: async ({
+      conversationId,
+      file,
+    }: {
+      conversationId: string
+      file: File
+    }) => {
+      if (!activeOrganizationId)
+        throw new Error('当前账号还没有可用的组织空间。')
       return uploadAgentFile({
         conversationId,
         organizationId: activeOrganizationId,
@@ -107,8 +132,14 @@ export default function AgentWorkspace() {
       setSelectedFileId(uploaded.file_id)
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.detail(uploaded.conversation_id ?? currentConversationId) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.library(activeOrganizationId) }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.detail(
+            uploaded.conversation_id ?? currentConversationId
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.library(activeOrganizationId),
+        }),
       ])
     },
     onError: showError('上传失败'),
@@ -125,8 +156,12 @@ export default function AgentWorkspace() {
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.conversations }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.detail(payload.conversation_id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.library(activeOrganizationId) }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.detail(payload.conversation_id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.library(activeOrganizationId),
+        }),
       ])
     },
     onError: showError('发送失败'),
@@ -165,7 +200,12 @@ export default function AgentWorkspace() {
   }, [activeOrganizationId])
 
   useEffect(() => {
-    if (!activeOrganizationId || bootstrappedRef.current || conversationsQuery.isLoading) return
+    if (
+      !activeOrganizationId ||
+      bootstrappedRef.current ||
+      conversationsQuery.isLoading
+    )
+      return
     bootstrappedRef.current = true
     const first = conversationsQuery.data?.[0]
     if (first) {
@@ -173,25 +213,40 @@ export default function AgentWorkspace() {
       return
     }
     void createConversationMutation.mutateAsync()
-  }, [activeOrganizationId, conversationsQuery.data, conversationsQuery.isLoading, createConversationMutation])
+  }, [
+    activeOrganizationId,
+    conversationsQuery.data,
+    conversationsQuery.isLoading,
+    createConversationMutation,
+  ])
 
   useEffect(() => {
     if (!detail) return
-    if (pendingSelectFileId && detail.files.some((file) => file.file_id === pendingSelectFileId)) {
+    if (
+      pendingSelectFileId &&
+      detail.files.some((file) => file.file_id === pendingSelectFileId)
+    ) {
       setSelectedFileId(pendingSelectFileId)
       setPendingSelectFileId(null)
       return
     }
     setSelectedFileId((current) => {
-      if (current && detail.files.some((file) => file.file_id === current)) return current
-      return detail.current_file?.file_id ?? detail.files[detail.files.length - 1]?.file_id ?? null
+      if (current && detail.files.some((file) => file.file_id === current))
+        return current
+      return (
+        detail.current_file?.file_id ??
+        detail.files[detail.files.length - 1]?.file_id ??
+        null
+      )
     })
   }, [detail, pendingSelectFileId])
 
   function openConversation(conversationId: string, fileId?: string | null) {
     setPendingSelectFileId(fileId ?? null)
     setCurrentConversationId(conversationId)
-    setSelectedFileId(fileId && conversationId === currentConversationId ? fileId : null)
+    setSelectedFileId(
+      fileId && conversationId === currentConversationId ? fileId : null
+    )
   }
 
   async function createAndOpenConversation() {
@@ -228,7 +283,7 @@ export default function AgentWorkspace() {
     const uploaded = file ? await uploadFile(conversationId, file) : null
     const fileId = ignoreSelectedFile
       ? undefined
-      : uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id
+      : (uploaded?.file_id ?? selectedFileId ?? detail?.current_file?.file_id)
     await runMutation.mutateAsync({
       conversationId,
       organizationId,
@@ -270,52 +325,86 @@ export default function AgentWorkspace() {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <div className='h-svh w-full'>
-      <div className='grid h-full w-full grid-cols-[18rem_minmax(42rem,1fr)_minmax(0,24rem)] overflow-hidden'>
-        <div className='h-full min-h-0 min-w-0 overflow-hidden border-r bg-muted/30'>
-          <AgentThreadList
-            conversations={conversations}
-            currentConversationId={currentConversationId}
-            loading={loading}
-            identity={identity}
-            organization={activeMembership?.organization ?? null}
-            onCreateConversation={() => void createAndOpenConversation()}
-            onSelectConversation={openConversation}
-          />
-        </div>
+        <div className='grid h-full w-full grid-cols-[18rem_minmax(0,1fr)] overflow-hidden'>
+          <div className='h-full min-h-0 min-w-0 overflow-hidden border-r bg-muted/30'>
+            <AgentThreadList
+              conversations={conversations}
+              currentConversationId={currentConversationId}
+              loading={loading}
+              identity={identity}
+              organization={activeMembership?.organization ?? null}
+              onCreateConversation={() => void createAndOpenConversation()}
+              onSelectConversation={openConversation}
+            />
+          </div>
 
-        <div className='relative h-full min-h-0 min-w-0 overflow-hidden bg-background'>
-          <AgentChatPanel
-            messages={detail?.messages ?? []}
-            files={detail?.files ?? []}
-            toolCalls={detail?.tool_calls ?? []}
-            loading={loading}
-            sending={sending}
-            onSend={(input) => void handleSend(input)}
-            onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
-          />
-        </div>
+          <ResizablePanelGroup
+            id='chronofact-agent-workspace'
+            defaultLayout={panelLayout.defaultLayout}
+            onLayoutChanged={panelLayout.onLayoutChanged}
+            orientation='horizontal'
+            className='h-full min-h-0 min-w-0 overflow-hidden'
+          >
+            <ResizablePanel
+              id='agent-chat'
+              minSize='42rem'
+              className='min-h-0 min-w-0 overflow-hidden'
+            >
+              <div className='relative h-full min-h-0 min-w-0 overflow-hidden bg-background'>
+                <AgentChatPanel
+                  messages={detail?.messages ?? []}
+                  files={detail?.files ?? []}
+                  toolCalls={detail?.tool_calls ?? []}
+                  loading={loading}
+                  sending={sending}
+                  onSend={(input) => void handleSend(input)}
+                  onConfirmPreserve={(action) =>
+                    void handleConfirmPreserve(action)
+                  }
+                />
+              </div>
+            </ResizablePanel>
 
-        <div className='h-full min-h-0 min-w-0 overflow-hidden border-l bg-muted/20'>
-          <EvidenceConsole
-            detail={detail}
-            organization={activeMembership?.organization ?? null}
-            agentHealth={healthQuery.data ?? null}
-            documentLibrary={libraryQuery.data ?? null}
-            selectedFileId={selectedFileId}
-            currentConversationId={currentConversationId}
-            busy={busy}
-            pendingAction={pendingAction}
-            onSelectFile={setSelectedFileId}
-            onOpenConversation={openConversation}
-            onUploadFile={(file) => void handleUploadOnly(file)}
-            onConfirmPreserve={(action) => void handleConfirmPreserve(action)}
-            onAnalyzeLibrary={() => void handleSend({
-              message: '帮我分析当前空间所有文件的存证情况',
-              ignoreSelectedFile: true,
-            })}
-          />
+            <ResizableHandle
+              withHandle
+              aria-label='调整文件与证明面板宽度'
+              className='bg-border/60 hover:bg-emerald-500/20 active:bg-emerald-500/30'
+            />
+
+            <ResizablePanel
+              id='evidence-console'
+              defaultSize='24rem'
+              minSize='18rem'
+              maxSize='36rem'
+              className='min-h-0 min-w-0 overflow-hidden'
+            >
+              <div className='h-full min-h-0 min-w-0 overflow-hidden bg-muted/20'>
+                <EvidenceConsole
+                  detail={detail}
+                  organization={activeMembership?.organization ?? null}
+                  agentHealth={healthQuery.data ?? null}
+                  documentLibrary={libraryQuery.data ?? null}
+                  selectedFileId={selectedFileId}
+                  currentConversationId={currentConversationId}
+                  busy={busy}
+                  pendingAction={pendingAction}
+                  onSelectFile={setSelectedFileId}
+                  onOpenConversation={openConversation}
+                  onUploadFile={(file) => void handleUploadOnly(file)}
+                  onConfirmPreserve={(action) =>
+                    void handleConfirmPreserve(action)
+                  }
+                  onAnalyzeLibrary={() =>
+                    void handleSend({
+                      message: '帮我分析当前空间所有文件的存证情况',
+                      ignoreSelectedFile: true,
+                    })
+                  }
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         </div>
-      </div>
       </div>
     </AssistantRuntimeProvider>
   )
@@ -324,7 +413,7 @@ export default function AgentWorkspace() {
 function hasRunningWork(detail?: AgentConversationDetail) {
   return Boolean(
     detail?.messages.some((message) => message.status === 'running') ||
-      detail?.runs.some((run) => run.status === 'running')
+    detail?.runs.some((run) => run.status === 'running')
   )
 }
 
