@@ -210,9 +210,7 @@ export function createAgentService({
       const conversationId = conversation.conversationId;
       const organizationId = auth.organizationId;
       const file = resolveFileForOrganization(store, conversationId, organizationId, parsed.file_id);
-      const plannedAction = wantsFileContentAnalysis(parsed.message)
-        ? "file_analysis"
-        : await planAgentAction({ llmClient, message: parsed.message, file });
+      const plannedAction = inferAction(parsed.message);
       const userMessage = store.addMessage({
         conversationId,
         role: "user",
@@ -222,6 +220,21 @@ export function createAgentService({
         }
       });
       maybeRenameConversation(store, conversation, parsed.message);
+
+      const agentTurn = await runToolCallAgentTurn({
+        message: parsed.message,
+        confirmedAction: Boolean(parsed.confirmed_action),
+        file,
+        organizationId,
+        conversationId,
+        requestHeaders: requestContext.authHeaders
+      });
+      if (agentTurn) {
+        return reply(store, conversationId, agentTurn.content, {
+          user_message: toMessageContext(userMessage),
+          ...agentTurn.extra
+        });
+      }
 
       if (wantsLibraryOverview(parsed.message)) {
         const summary = buildLibrarySummary(store, organizationId);
@@ -432,9 +445,6 @@ export function createAgentService({
     let plannedAction = inferAction(parsed.message);
     try {
       const file = resolveFileForOrganization(store, conversationId, organizationId, parsed.file_id);
-      plannedAction = wantsFileContentAnalysis(parsed.message)
-        ? "file_analysis"
-        : await planAgentAction({ llmClient, message: parsed.message, file });
       const complete = (content: string, extra: Record<string, unknown> = {}) => {
         const toolCalls = Array.isArray(extra.tool_calls) ? (extra.tool_calls as any[]) : [];
         const metadata = {
@@ -456,6 +466,19 @@ export function createAgentService({
         });
         return updated;
       };
+
+      const agentTurn = await runToolCallAgentTurn({
+        message: parsed.message,
+        confirmedAction: Boolean(parsed.confirmed_action),
+        file,
+        organizationId,
+        conversationId,
+        requestHeaders: requestContext.authHeaders
+      });
+      if (agentTurn) {
+        complete(agentTurn.content, agentTurn.extra);
+        return;
+      }
 
       if (wantsLibraryOverview(parsed.message)) {
         const summary = buildLibrarySummary(store, organizationId);
@@ -654,6 +677,307 @@ export function createAgentService({
       });
       store.updateRun({ runId, status: "failed", error: message });
     }
+  }
+
+  async function runToolCallAgentTurn({
+    message,
+    confirmedAction,
+    file,
+    organizationId,
+    conversationId,
+    requestHeaders
+  }: {
+    message: string;
+    confirmedAction: boolean;
+    file: StoredFile | null;
+    organizationId: string;
+    conversationId: string;
+    requestHeaders?: RequestAuthHeaders;
+  }): Promise<{ content: string; extra: Record<string, unknown> } | null> {
+    const plannedTools = await planAgentToolCalls({
+      llmClient,
+      message,
+      file,
+      confirmedAction
+    });
+    if (plannedTools.length === 0) {
+      return null;
+    }
+
+    const calls: any[] = [];
+    let content = "";
+    let extra: Record<string, unknown> = {
+      action: "chat",
+      action_required: null,
+      tool_calls: calls,
+      file: file ? toFileContext(file) : null
+    };
+
+    for (const plannedTool of plannedTools) {
+      const toolName = plannedTool.toolName;
+      if (toolName === "chatOnly") {
+        continue;
+      }
+
+      if (toolName === "listDocumentLibrary") {
+        const summary = buildLibrarySummary(store, organizationId);
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "listDocumentLibrary",
+          input: { organizationId, reason: plannedTool.arguments?.reason ?? null },
+          output: summary,
+          status: "completed"
+        });
+        calls.push(toToolCallResponse(toolCall));
+        content = librarySummaryReply(summary);
+        extra = {
+          ...extra,
+          library_summary: summary,
+          action: "library_summary"
+        };
+        continue;
+      }
+
+      if (toolName === "inspectCurrentFile") {
+        if (!file) {
+          return {
+            content: "请先上传要检查的文件。",
+            extra: {
+              ...extra,
+              action: "inspect_file",
+              action_required: null,
+              file: null
+            }
+          };
+        }
+        const proofTarget = resolveProofTarget(store, organizationId, file);
+        const output = {
+          file: toFileContext(store.getFile(file.fileId) ?? file),
+          proof_target: {
+            relation: proofTarget.relation,
+            proof_id: proofTarget.proofId,
+            version_id: proofTarget.versionId,
+            document_id: proofTarget.document?.documentId ?? null,
+            document_name: proofTarget.document?.displayName ?? null,
+            document_version_id: proofTarget.version?.documentVersionId ?? null
+          }
+        };
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "inspectCurrentFile",
+          input: {
+            organizationId,
+            file_id: file.fileId,
+            reason: plannedTool.arguments?.reason ?? null
+          },
+          output,
+          status: "completed"
+        });
+        calls.push(toToolCallResponse(toolCall));
+        content = `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。`;
+        extra = {
+          ...extra,
+          file: toFileContext(store.getFile(file.fileId) ?? file),
+          action: "inspect_file"
+        };
+        continue;
+      }
+
+      if (toolName === "analyzeFileContent") {
+        if (!file) {
+          return {
+            content: "请先上传要分析的文件。",
+            extra: {
+              ...extra,
+              action: "file_analysis",
+              action_required: null,
+              file: null
+            }
+          };
+        }
+        const analysis = await analyzeCurrentFile({ file, llmClient });
+        const toolCall = store.addToolCall({
+          conversationId,
+          toolName: "analyzeFileContent",
+          input: {
+            file_id: file.fileId,
+            filename: file.filename,
+            sha256: file.sha256,
+            reason: plannedTool.arguments?.reason ?? null
+          },
+          output: analysis,
+          status: "completed"
+        });
+        calls.push(toToolCallResponse(toolCall));
+        content = analysis.reply;
+        extra = {
+          ...extra,
+          file: toFileContext(file),
+          file_analysis: analysis,
+          verification: null,
+          action: "file_analysis",
+          action_required: null
+        };
+        continue;
+      }
+
+      if (toolName === "preparePreserveEvidence" || toolName === "preserveEvidence" || toolName === "preserveEvidenceVersion") {
+        if (!file) {
+          return {
+            content: "请先上传一个文件，我才能计算摘要并提交存证。",
+            extra: {
+              ...extra,
+              action: "preserve",
+              action_required: null,
+              file: null
+            }
+          };
+        }
+        if (!confirmedAction) {
+          const versionTarget = resolveVersionPreserveTarget(store, organizationId, file);
+          return {
+            content: versionTarget
+              ? `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。这看起来是《${versionTarget.document.displayName}》的新版本，请确认是否作为新版本存证。`
+              : `已读取 ${file.filename}，文件指纹是 ${shortSha(file.sha256)}。如果要把这份文件正式存证，请点击确认存证。`,
+            extra: {
+              ...extra,
+              file: toFileContext(file),
+              action: "preserve",
+              action_required: {
+                type: "confirm_preserve",
+                label: versionTarget ? "作为新版本存证" : "确认存证",
+                file_id: file.fileId
+              }
+            }
+          };
+        }
+        const { proof, toolCall } = await preserveFileVersionAware({ organizationId, file, conversationId, requestHeaders });
+        calls.push(toToolCallResponse(toolCall));
+        content = await improveReply({
+          llmClient,
+          fallback: preserveReply(proof),
+          task: "preserve",
+          payload: proof
+        });
+        extra = {
+          ...extra,
+          proof,
+          file: toFileContext(store.getFile(file.fileId) ?? file),
+          action: "preserve",
+          action_required: null
+        };
+        continue;
+      }
+
+      if (toolName === "verifyEvidence") {
+        if (!file) {
+          return {
+            content: "请先上传要验证的文件。",
+            extra: {
+              ...extra,
+              action: "verify",
+              action_required: null,
+              file: null
+            }
+          };
+        }
+        const proofTarget = resolveProofTarget(store, organizationId, file);
+        if (proofTarget.relation === "version_candidate") {
+          const verification = versionCandidateVerification(file, proofTarget);
+          const verifyCall = store.addToolCall({
+            conversationId,
+            toolName: "verifyEvidence",
+            input: {
+              organizationId,
+              sha256: file.sha256,
+              document_id: proofTarget.document?.documentId ?? null,
+              mode: "local_version_candidate"
+            },
+            output: verification,
+            status: "completed"
+          });
+          calls.push(toToolCallResponse(verifyCall));
+          content = verificationReply(verification, undefined);
+          extra = {
+            ...extra,
+            verification,
+            file: toFileContext(store.getFile(file.fileId) ?? file),
+            action: "verify",
+            action_required: {
+              type: "confirm_preserve",
+              label: "作为新版本存证",
+              file_id: file.fileId
+            }
+          };
+          continue;
+        }
+        const toolInput = {
+          organizationId,
+          sha256: file.sha256,
+          proofId: proofTarget.proofId,
+          versionId: proofTarget.versionId,
+          requestHeaders
+        };
+        const verification = annotateVerification(await tools.verifyEvidence.execute!(toolInput, {} as any), proofTarget, file);
+        const verifyCall = store.addToolCall({
+          conversationId,
+          toolName: "verifyEvidence",
+          input: sanitizeToolInput(toolInput),
+          output: verification,
+          status: "completed"
+        });
+        calls.push(toToolCallResponse(verifyCall));
+        let explanation: unknown = undefined;
+        if (needsExplanation(verification)) {
+          const explainInput = explanationInputFromVerification(verification);
+          const rawExplanation = await tools.explainEvidence.execute!(explainInput, {} as any);
+          explanation = normalizeExplanation(verification, rawExplanation);
+          const explainCall = store.addToolCall({
+            conversationId,
+            toolName: "explainEvidence",
+            input: explainInput,
+            output: explanation,
+            status: "completed"
+          });
+          calls.push(toToolCallResponse(explainCall));
+        }
+        content = await improveReply({
+          llmClient,
+          fallback: verificationReply(verification, explanation),
+          task: "verify",
+          payload: { verification, explanation }
+        });
+        extra = {
+          ...extra,
+          verification,
+          explanation,
+          file: toFileContext(file),
+          action: "verify",
+          action_required: null
+        };
+      }
+    }
+
+    if (!content) {
+      const generalReply = await llmClient?.complete({
+        system: agentSystemPrompt(),
+        user: generalPrompt(message, file)
+      });
+      content = guardGeneralReply(generalReply, file);
+      extra = {
+        ...extra,
+        action: "chat",
+        action_required: null
+      };
+    }
+
+    return {
+      content,
+      extra: {
+        ...extra,
+        tool_calls: calls
+      }
+    };
   }
 
   async function preserveFileVersionAware({
@@ -870,6 +1194,126 @@ function inferAction(message: string) {
   if (wantsPreserve(message)) return "preserve";
   if (wantsVerify(message)) return "verify";
   return "chat";
+}
+
+type PlannedAgentTool = {
+  toolName: string;
+  arguments: Record<string, unknown>;
+};
+
+async function planAgentToolCalls({
+  llmClient,
+  message,
+  file,
+  confirmedAction
+}: {
+  llmClient: AgentLlmClient | null;
+  message: string;
+  file: StoredFile | null;
+  confirmedAction: boolean;
+}): Promise<PlannedAgentTool[]> {
+  if (!llmClient?.configured) {
+    return [];
+  }
+  const choices = await llmClient.chooseTools({
+    system: [
+      "你是 Chronofact Agent 的工具调度器。",
+      "你必须选择工具，不要直接回答用户。",
+      "如果用户问所有、全部、目前、文件库、哪些文件、有没有问题的文件、风险项、台账、整体情况，调用 listDocumentLibrary；即使当前有 file_id，也不要只验证当前文件。",
+      "如果用户说这个文件、这份文件、当前文件、它，并且想知道是否存证、是否一致、是否可信，先调用 inspectCurrentFile，再调用 verifyEvidence。",
+      "如果用户想读文件正文、总结文件、讲讲材料内容，调用 analyzeFileContent。",
+      "如果用户想正式存证但没有确认，调用 preparePreserveEvidence。",
+      "如果用户已确认写入，调用 preserveEvidence；后端会自动决定是新文件还是新版本。",
+      "不要编造 organizationId、fileId、sha256、proofId；工具参数只写 reason 这类解释性字段即可。"
+    ].join("\n"),
+    user: [
+      file
+        ? `当前文件：${file.filename}\n当前文件短指纹：${shortSha(file.sha256)}\n当前文件是否已有 proof：${file.proofId ? "是" : "否"}`
+        : "当前没有文件。",
+      `confirmed_action：${confirmedAction ? "true" : "false"}`,
+      `用户消息：${message}`
+    ].join("\n"),
+    tools: agentToolDescriptions()
+  });
+  return choices
+    .filter((choice: PlannedAgentTool | null | undefined): choice is PlannedAgentTool => Boolean(choice?.toolName))
+    .filter((choice: PlannedAgentTool) => knownAgentToolNames.has(choice.toolName))
+    .slice(0, 5);
+}
+
+const knownAgentToolNames = new Set([
+  "listDocumentLibrary",
+  "inspectCurrentFile",
+  "analyzeFileContent",
+  "preparePreserveEvidence",
+  "preserveEvidence",
+  "preserveEvidenceVersion",
+  "verifyEvidence",
+  "explainEvidence",
+  "chatOnly"
+]);
+
+function agentToolDescriptions() {
+  return [
+    {
+      name: "listDocumentLibrary",
+      description: "Summarize the whole organization document library, preserved files, pending files, risk/problem items, and evidence status.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "inspectCurrentFile",
+      description: "Inspect the current file context, document match, candidate version, proof id, and version relation before other file-specific tools.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "analyzeFileContent",
+      description: "Read and summarize the current file's text content. Use when the user asks what the document says or asks to analyze the file content.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "preparePreserveEvidence",
+      description: "Prepare a confirmation prompt for preserving the current file. This never writes evidence.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "preserveEvidence",
+      description: "Preserve the current file after explicit user confirmation. The backend enforces confirmed_action before writing.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "preserveEvidenceVersion",
+      description: "Preserve the current file as a new version after explicit user confirmation. The backend enforces confirmed_action before writing.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "verifyEvidence",
+      description: "Verify whether the current file is preserved, matches its stored version, is missing evidence, or is a same-name new version candidate.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "explainEvidence",
+      description: "Explain verification risks after a mismatch, missing proof, or chain unavailable result.",
+      parameters: reasonSchema()
+    },
+    {
+      name: "chatOnly",
+      description: "Answer without Chronofact evidence tools when the user is only chatting or asking capabilities.",
+      parameters: reasonSchema()
+    }
+  ];
+}
+
+function reasonSchema() {
+  return {
+    type: "object",
+    properties: {
+      reason: {
+        type: "string",
+        description: "Short reason why this tool is useful for the user request."
+      }
+    },
+    additionalProperties: false
+  };
 }
 
 async function planAgentAction({

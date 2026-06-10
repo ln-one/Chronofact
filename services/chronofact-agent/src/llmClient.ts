@@ -61,7 +61,16 @@ export function createAgentLlmClient({
       }
     },
 
-    async chooseTool({
+    async chooseTool(input: {
+      system: string;
+      user: string;
+      tools: Array<{ name: string; description: string; parameters?: unknown }>;
+    }) {
+      const choices = await this.chooseTools(input);
+      return choices[0] ?? null;
+    },
+
+    async chooseTools({
       system,
       user,
       tools
@@ -108,17 +117,23 @@ export function createAgentLlmClient({
         }
         const payload = await response.json().catch(() => ({}));
         const message = payload?.choices?.[0]?.message ?? {};
-        const toolCall = Array.isArray(message.tool_calls) ? message.tool_calls[0] : null;
-        const name = toolCall?.function?.name;
-        if (typeof name === "string" && name) {
-          return {
-            toolName: name,
-            arguments: parseJsonObject(toolCall?.function?.arguments)
-          };
+        if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+          return message.tool_calls
+            .map((toolCall: any) => {
+              const name = toolCall?.function?.name;
+              return typeof name === "string" && name
+                ? {
+                    toolName: name,
+                    arguments: parseJsonObject(toolCall?.function?.arguments)
+                  }
+                : null;
+            })
+            .filter(Boolean);
         }
-        return parseToolChoiceFromText(message.content);
+        const textChoice = parseToolChoiceFromText(message.content);
+        return textChoice ? [textChoice] : [];
       } catch {
-        return null;
+        return [];
       } finally {
         clearTimeout(timeout);
       }

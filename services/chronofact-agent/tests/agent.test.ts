@@ -228,6 +228,180 @@ test("LLM tool call chooses the verification tool instead of keyword-only routin
   assert.ok(llmCalls[0].tools.some((tool: any) => tool.function.name === "verifyEvidence"));
 });
 
+test("LLM tool call can choose the document library despite current file context", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const llmCalls: any[] = [];
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        llmCalls.push(body);
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: "call_library",
+                  type: "function",
+                  function: { name: "listDocumentLibrary", arguments: JSON.stringify({ reason: "user asks about the whole evidence ledger" }) }
+                }]
+              }
+            }]
+          });
+        }
+        return Response.json({ choices: [{ message: { content: "这个空间有 1 个已建档文件，没有发现待处理文件。" } }] });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_library_tool",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_library_tool",
+    organization_id: "org_001",
+    message: "确认存证",
+    file_id: file.body.file_id,
+    confirmed_action: true
+  });
+
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_library_tool",
+    organization_id: "org_001",
+    message: "把我的证据台账过一遍，挑出风险项",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.action, "library_summary");
+  assert.equal(chat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "listDocumentLibrary");
+  assert.match(chat.body.reply, /已建档文件|空间/);
+  assert.ok(llmCalls[0].tools.some((tool: any) => tool.function.name === "listDocumentLibrary"));
+});
+
+test("LLM tool call can execute inspect current file before verification", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [
+                  {
+                    id: "call_inspect",
+                    type: "function",
+                    function: { name: "inspectCurrentFile", arguments: JSON.stringify({ reason: "read current file context first" }) }
+                  },
+                  {
+                    id: "call_verify",
+                    type: "function",
+                    function: { name: "verifyEvidence", arguments: JSON.stringify({ reason: "verify current file after inspection" }) }
+                  }
+                ]
+              }
+            }]
+          });
+        }
+        return Response.json({ choices: [{ message: { content: "这份文件和之前存证的内容一致。" } }] });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_inspect_verify",
+    organization_id: "org_001",
+    filename: "report.txt",
+    content_base64: Buffer.from("original").toString("base64")
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_inspect_verify",
+    organization_id: "org_001",
+    message: "帮我确认一下这份材料现在是否可信",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.verification.result, "preserved");
+  assert.equal(chat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "inspectCurrentFile,verifyEvidence");
+});
+
+test("LLM tool call can choose file content analysis without regex keywords", async (t) => {
+  const llmCalls: any[] = [];
+  const { baseUrl, cleanup } = await withAgent(t, {
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        llmCalls.push(body);
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: "call_analysis",
+                  type: "function",
+                  function: { name: "analyzeFileContent", arguments: JSON.stringify({ reason: "user wants the document read" }) }
+                }]
+              }
+            }]
+          });
+        }
+        return Response.json({
+          choices: [{ message: { content: "这份材料主要是诚信考试承诺，提醒遵守考试纪律。" } }]
+        });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_read_file",
+    filename: "commitment.txt",
+    content_base64: Buffer.from("诚信考试承诺书\n本人承诺遵守考试纪律。").toString("base64"),
+    mime_type: "text/plain"
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_read_file",
+    organization_id: "org_001",
+    message: "给我读一下这份材料",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.action, "file_analysis");
+  assert.equal(chat.body.tool_calls[0].tool_name, "analyzeFileContent");
+  assert.match(chat.body.reply, /诚信考试/);
+  assert.equal(chat.body.verification, null);
+  assert.ok(llmCalls[0].tools.some((tool: any) => tool.function.name === "analyzeFileContent"));
+});
+
 test("confirmed preserve calls Chronofact API and records tool call output", async (t) => {
   const chronofact = await withChronofactStub(t);
   const { baseUrl, cleanup } = await withAgent(t, { chronofactApiUrl: chronofact.baseUrl });
@@ -856,7 +1030,8 @@ test("agent analyzes uploaded text file content without calling evidence verific
   assert.equal(chat.body.tool_calls[0].tool_name, "analyzeFileContent");
   assert.match(chat.body.tool_calls[0].output.preview, /考试纪律/);
   assert.equal(chat.body.verification, null);
-  assert.equal(llmCalls.length, 1);
+  assert.equal(llmCalls.length, 2);
+  assert.ok(llmCalls[0].tools.some((tool: any) => tool.function.name === "analyzeFileContent"));
 });
 
 async function withAgent(
