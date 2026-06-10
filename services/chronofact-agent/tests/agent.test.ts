@@ -22,6 +22,33 @@ test("created conversation is visible in conversation list", async (t) => {
   assert.equal(listed.body.conversations[0].conversation_id, "conv_product");
 });
 
+test("conversation list and detail can be scoped by requested organization", async (t) => {
+  const { baseUrl, cleanup } = await withAgent(t);
+  t.after(cleanup);
+
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_org_1",
+    organization_id: "org_001",
+    title: "Org 1"
+  });
+  await postJson(`${baseUrl}/agent/conversations`, {
+    conversation_id: "conv_org_2",
+    organization_id: "org_002",
+    title: "Org 2"
+  });
+
+  const org2List = await getJson(`${baseUrl}/agent/conversations?organization_id=org_002`);
+  assert.equal(org2List.status, 200);
+  assert.deepEqual(org2List.body.conversations.map((item: any) => item.conversation_id), ["conv_org_2"]);
+
+  const org2Detail = await getJson(`${baseUrl}/agent/conversations/conv_org_2?organization_id=org_002`);
+  assert.equal(org2Detail.status, 200);
+  assert.equal(org2Detail.body.conversation.organization_id, "org_002");
+
+  const crossOrgDetail = await getJson(`${baseUrl}/agent/conversations/conv_org_1?organization_id=org_002`);
+  assert.equal(crossOrgDetail.status, 404);
+});
+
 test("openapi document exposes agent routes", async (t) => {
   const { baseUrl, cleanup } = await withAgent(t);
   t.after(cleanup);

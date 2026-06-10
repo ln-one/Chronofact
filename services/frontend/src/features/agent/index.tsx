@@ -61,15 +61,15 @@ export default function AgentWorkspace() {
 
   const conversationsQuery = useQuery({
     queryKey: [...queryKeys.conversations, activeOrganizationId] as const,
-    queryFn: listAgentConversations,
+    queryFn: () => listAgentConversations(activeOrganizationId!),
     enabled: Boolean(activeOrganizationId),
     staleTime: 0,
   })
 
   const detailQuery = useQuery({
     queryKey: queryKeys.detail(currentConversationId),
-    queryFn: () => getAgentConversation(currentConversationId!),
-    enabled: Boolean(currentConversationId),
+    queryFn: () => getAgentConversation(currentConversationId!, activeOrganizationId!),
+    enabled: Boolean(currentConversationId && activeOrganizationId),
     staleTime: 0,
     refetchInterval: (query) =>
       hasRunningWork(query.state.data as AgentConversationDetail | undefined)

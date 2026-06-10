@@ -176,8 +176,10 @@ export type AgentChatResponse = {
   action_required?: AgentActionRequired | null
 }
 
-export async function listAgentConversations() {
-  const payload = await requestJson<{ conversations: AgentConversation[] }>('/agent/conversations')
+export async function listAgentConversations(organizationId: string) {
+  const payload = await requestJson<{ conversations: AgentConversation[] }>(
+    `/agent/conversations?organization_id=${encodeURIComponent(organizationId)}`
+  )
   return payload.conversations
 }
 
@@ -193,9 +195,9 @@ export async function createAgentConversation(input: { title?: string; organizat
   return payload.conversation
 }
 
-export async function getAgentConversation(conversationId: string) {
+export async function getAgentConversation(conversationId: string, organizationId: string) {
   return requestJson<AgentConversationDetail>(
-    `/agent/conversations/${encodeURIComponent(conversationId)}`
+    `/agent/conversations/${encodeURIComponent(conversationId)}?organization_id=${encodeURIComponent(organizationId)}`
   )
 }
 

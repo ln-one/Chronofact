@@ -171,6 +171,7 @@ function createHonoApp({
     summary: "List agent conversations"
   }), async (c) => {
     const auth = await agent.resolveAuth({
+      organizationId: c.req.query("organization_id"),
       requestContext: requestContext(c.req.raw.headers)
     });
     return c.json({
@@ -205,6 +206,7 @@ function createHonoApp({
     summary: "Get agent conversation detail"
   }), async (c) => {
     const auth = await agent.resolveAuth({
+      organizationId: c.req.query("organization_id"),
       requestContext: requestContext(c.req.raw.headers)
     });
     const detail = store.describeConversation(c.req.param("conversation_id"));
