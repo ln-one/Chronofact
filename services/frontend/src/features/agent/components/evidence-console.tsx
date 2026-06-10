@@ -287,27 +287,32 @@ export function EvidenceConsole({
                             : 'bg-background/60'
                         }`}
                       >
-                      <summary className='flex cursor-pointer list-none items-start justify-between gap-2'>
-                        <div className='min-w-0'>
-                          <p className='truncate font-medium' title={entry.document.display_name}>
-                            {compactFilename(entry.document.display_name)}
-                          </p>
-                          <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
-                            {entry.latest_version?.sha256 ? shortSha(entry.latest_version.sha256) : '无指纹'}
-                          </p>
-                        </div>
-                        <Badge variant='secondary' className='shrink-0 font-normal'>
-                          {documentStatusLabel(entry.latest_version)}
-                        </Badge>
-                        <ChevronDown className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/45 transition group-open:rotate-180' />
-                      </summary>
-                      <div className='mt-3 min-w-0 space-y-2 border-t pt-3'>
-                        {entry.versions.length ? (
-                          entry.versions.slice().reverse().map(({ version, file }) => (
-                            <div
-                              key={version.document_version_id}
-                              className='min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
-                            >
+                        <summary className='flex cursor-pointer list-none items-start justify-between gap-2'>
+                          <div className='min-w-0'>
+                            <p className='truncate font-medium' title={entry.document.display_name}>
+                              {compactFilename(entry.document.display_name)}
+                            </p>
+                            <p className='mt-1 truncate font-mono text-xs text-muted-foreground/55'>
+                              {entry.latest_version?.sha256 ? shortSha(entry.latest_version.sha256) : '无指纹'}
+                            </p>
+                          </div>
+                          <Badge
+                            variant={needsPreserve ? 'outline' : 'secondary'}
+                            className={`shrink-0 font-normal ${
+                              needsPreserve ? 'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200' : ''
+                            }`}
+                          >
+                            {documentStatusLabel(entry.latest_version)}
+                          </Badge>
+                          <ChevronDown className='mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/45 transition group-open:rotate-180' />
+                        </summary>
+                        <div className='mt-3 min-w-0 space-y-2 border-t pt-3'>
+                          {entry.versions.length ? (
+                            entry.versions.slice().reverse().map(({ version, file }) => (
+                              <div
+                                key={version.document_version_id}
+                                className='min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
+                              >
                               <div className='flex min-w-0 items-center justify-between gap-2'>
                                 <span className='shrink-0 font-medium'>v{version.version_no}</span>
                                 <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
