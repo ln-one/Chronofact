@@ -1235,10 +1235,38 @@ async function planAgentToolCalls({
     ].join("\n"),
     tools: agentToolDescriptions()
   });
-  return choices
+  const plannedTools = choices
     .filter((choice: PlannedAgentTool | null | undefined): choice is PlannedAgentTool => Boolean(choice?.toolName))
     .filter((choice: PlannedAgentTool) => knownAgentToolNames.has(choice.toolName))
     .slice(0, 5);
+  return completePlannedAgentTools(plannedTools, message, file);
+}
+
+function completePlannedAgentTools(plannedTools: PlannedAgentTool[], message: string, file: StoredFile | null) {
+  if (!file || plannedTools.length === 0) {
+    return plannedTools;
+  }
+
+  const toolNames = new Set(plannedTools.map((tool) => tool.toolName));
+  const onlyNeedsCurrentFileVerification =
+    wantsVerify(message)
+    && !wantsLibraryOverview(message)
+    && !wantsFileContentAnalysis(message)
+    && !wantsPreserve(message);
+
+  if (onlyNeedsCurrentFileVerification && toolNames.has("inspectCurrentFile") && !toolNames.has("verifyEvidence")) {
+    return [
+      ...plannedTools,
+      {
+        toolName: "verifyEvidence",
+        arguments: {
+          reason: "Complete current-file verification after inspection."
+        }
+      }
+    ].slice(0, 5);
+  }
+
+  return plannedTools;
 }
 
 const knownAgentToolNames = new Set([

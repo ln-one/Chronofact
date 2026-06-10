@@ -347,6 +347,57 @@ test("LLM tool call can execute inspect current file before verification", async
   assert.equal(chat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "inspectCurrentFile,verifyEvidence");
 });
 
+test("LLM inspect-only current-file query is completed with verification", async (t) => {
+  const chronofact = await withChronofactStub(t);
+  const { baseUrl, cleanup } = await withAgent(t, {
+    chronofactApiUrl: chronofact.baseUrl,
+    env: {
+      CHRONOFACT_AGENT_LLM_BASE_URL: "https://mimo.example/v1",
+      CHRONOFACT_AGENT_LLM_API_KEY: "secret",
+      CHRONOFACT_AGENT_LLM_MODEL: "mimo-v2.5-pro"
+    },
+    fetchImpl: async (url, options) => {
+      if (String(url).startsWith("https://mimo.example/v1")) {
+        const body = JSON.parse(String(options?.body));
+        if (body.tools) {
+          return Response.json({
+            choices: [{
+              message: {
+                tool_calls: [{
+                  id: "call_inspect",
+                  type: "function",
+                  function: { name: "inspectCurrentFile", arguments: JSON.stringify({ reason: "read current file first" }) }
+                }]
+              }
+            }]
+          });
+        }
+        return Response.json({ choices: [{ message: { content: "我没有找到这份文件的存证记录。" } }] });
+      }
+      return fetch(url, options);
+    }
+  });
+  t.after(cleanup);
+
+  const file = await postJson(`${baseUrl}/agent/files`, {
+    conversation_id: "conv_inspect_only",
+    organization_id: "org_001",
+    filename: "missing-proof.txt",
+    content_base64: Buffer.from("not preserved yet").toString("base64")
+  });
+  const chat = await postJson(`${baseUrl}/agent/chat`, {
+    conversation_id: "conv_inspect_only",
+    organization_id: "org_001",
+    message: "这个文件存证了吗",
+    file_id: file.body.file_id
+  });
+
+  assert.equal(chat.status, 200);
+  assert.equal(chat.body.verification.agent_classification, "not_preserved");
+  assert.equal(chat.body.tool_calls.map((call: { tool_name: string }) => call.tool_name).join(","), "inspectCurrentFile,verifyEvidence");
+  assert.match(chat.body.reply, /没有找到|未存证|还没有/);
+});
+
 test("LLM tool call can choose file content analysis without regex keywords", async (t) => {
   const llmCalls: any[] = [];
   const { baseUrl, cleanup } = await withAgent(t, {
