@@ -600,7 +600,12 @@ function LibraryMetric({
 
 function SelectedBadge() {
   return (
-    <Badge variant='secondary' className={`shrink-0 font-normal ${selectedBadgeClass}`}>
+    <Badge
+      variant='secondary'
+      className={`shrink-0 font-normal ${selectedBadgeClass}`}
+      aria-label='当前选中文件'
+      title='当前选中文件'
+    >
       当前
     </Badge>
   )
