@@ -313,42 +313,42 @@ export function EvidenceConsole({
                                 key={version.document_version_id}
                                 className='min-w-0 rounded-lg bg-muted/35 px-2 py-1.5 text-xs'
                               >
-                              <div className='flex min-w-0 items-center justify-between gap-2'>
-                                <span className='shrink-0 font-medium'>v{version.version_no}</span>
-                                <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
-                                  {shortSha(version.sha256)}
-                                </span>
-                                <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
-                                  {version.proof_id ? '已存证' : '待存证'}
-                                </Badge>
+                                <div className='flex min-w-0 items-center justify-between gap-2'>
+                                  <span className='shrink-0 font-medium'>v{version.version_no}</span>
+                                  <span className='min-w-0 truncate font-mono text-muted-foreground/60'>
+                                    {shortSha(version.sha256)}
+                                  </span>
+                                  <Badge variant={version.proof_id ? 'secondary' : 'outline'} className='shrink-0 font-normal'>
+                                    {version.proof_id ? '已存证' : '待存证'}
+                                  </Badge>
+                                </div>
+                                {file?.conversation_id ? (
+                                  <Button
+                                    type='button'
+                                    variant='ghost'
+                                    size='sm'
+                                    className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
+                                    aria-label={
+                                      file.conversation_id === currentConversationId
+                                        ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                        : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                    }
+                                    title={
+                                      file.conversation_id === currentConversationId
+                                        ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
+                                        : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
+                                    }
+                                    onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
+                                  >
+                                    {file.conversation_id === currentConversationId ? '选中这个版本' : '打开这个版本所在对话'}
+                                  </Button>
+                                ) : null}
                               </div>
-                              {file?.conversation_id ? (
-                                <Button
-                                  type='button'
-                                  variant='ghost'
-                                  size='sm'
-                                  className='mt-1 h-6 w-full justify-start px-0 text-xs text-muted-foreground'
-                                  aria-label={
-                                    file.conversation_id === currentConversationId
-                                      ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
-                                      : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
-                                  }
-                                  title={
-                                    file.conversation_id === currentConversationId
-                                      ? `选中 ${entry.document.display_name} 第 ${version.version_no} 版`
-                                      : `打开 ${entry.document.display_name} 第 ${version.version_no} 版所在对话`
-                                  }
-                                  onClick={() => onOpenConversation(file.conversation_id!, file.file_id)}
-                                >
-                                  {file.conversation_id === currentConversationId ? '选中这个版本' : '打开这个版本所在对话'}
-                                </Button>
-                              ) : null}
-                            </div>
-                          ))
-                        ) : (
-                          <p className='text-xs text-muted-foreground/60'>还没有版本记录。</p>
-                        )}
-                      </div>
+                            ))
+                          ) : (
+                            <p className='text-xs text-muted-foreground/60'>还没有版本记录。</p>
+                          )}
+                        </div>
                       </details>
                     )
                   })}
