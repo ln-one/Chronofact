@@ -261,7 +261,16 @@ export function EvidenceConsole({
                 <LibraryMetric label='文件' value={documentLibrary.totals.documents} />
                 <LibraryMetric label='版本' value={documentLibrary.totals.versions} />
                 <LibraryMetric label='已存证' value={documentLibrary.totals.preserved_documents} />
-                <LibraryMetric label='待处理' value={pendingLibraryItems(documentLibrary)} />
+                <LibraryMetric
+                  label='待处理'
+                  value={pendingLibraryItems(documentLibrary)}
+                  onClick={pendingLibraryItems(documentLibrary) > 0
+                    ? () => {
+                        setShowAllDocuments(true)
+                        setShowAllUnversionedFiles(true)
+                      }
+                    : undefined}
+                />
               </div>
               {documentLibrary.documents.length ? (
                 <div className='space-y-2'>
@@ -512,7 +521,28 @@ function ToolStep({ call }: { call: AgentToolCall }) {
   )
 }
 
-function LibraryMetric({ label, value }: { label: string; value: number }) {
+function LibraryMetric({
+  label,
+  value,
+  onClick,
+}: {
+  label: string
+  value: number
+  onClick?: () => void
+}) {
+  if (onClick) {
+    return (
+      <button
+        type='button'
+        className='rounded-lg border bg-background/60 px-2 py-2 transition hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring/25'
+        onClick={onClick}
+      >
+        <p className='font-semibold text-foreground'>{value}</p>
+        <p className='mt-0.5 text-muted-foreground/60'>{label}</p>
+      </button>
+    )
+  }
+
   return (
     <div className='rounded-lg border bg-background/60 px-2 py-2'>
       <p className='font-semibold text-foreground'>{value}</p>
