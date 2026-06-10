@@ -26,6 +26,11 @@ import type {
 import type { LimoraOrganization } from '@/features/auth/limora-api'
 import { getAgentApiBaseUrl } from '../agent-api'
 
+const pendingCardClass =
+  'border-amber-200/80 bg-amber-50/35 dark:border-amber-900/60 dark:bg-amber-950/10'
+const pendingBadgeClass =
+  'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+
 export function EvidenceConsole({
   detail,
   organization,
@@ -283,7 +288,7 @@ export function EvidenceConsole({
                         key={entry.document.document_id}
                         className={`group min-w-0 overflow-hidden rounded-xl border px-3 py-2 text-sm ${
                           needsPreserve
-                            ? 'border-amber-200/80 bg-amber-50/35 dark:border-amber-900/60 dark:bg-amber-950/10'
+                            ? pendingCardClass
                             : 'bg-background/60'
                         }`}
                       >
@@ -299,7 +304,7 @@ export function EvidenceConsole({
                           <Badge
                             variant={needsPreserve ? 'outline' : 'secondary'}
                             className={`shrink-0 font-normal ${
-                              needsPreserve ? 'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200' : ''
+                              needsPreserve ? pendingBadgeClass : ''
                             }`}
                           >
                             {documentStatusLabel(entry.latest_version)}
@@ -321,7 +326,7 @@ export function EvidenceConsole({
                                   <Badge
                                     variant={version.proof_id ? 'secondary' : 'outline'}
                                     className={`shrink-0 font-normal ${
-                                      version.proof_id ? '' : 'border-amber-300/80 bg-amber-100/60 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+                                      version.proof_id ? '' : pendingBadgeClass
                                     }`}
                                   >
                                     {version.proof_id ? '已存证' : '待存证'}
@@ -385,7 +390,7 @@ export function EvidenceConsole({
                     {visibleUnversionedFiles.map((file) => (
                       <div
                         key={file.file_id}
-                        className='min-w-0 overflow-hidden rounded-xl border border-dashed border-amber-200/80 bg-amber-50/35 px-3 py-2 text-sm dark:border-amber-900/60 dark:bg-amber-950/10'
+                        className={`min-w-0 overflow-hidden rounded-xl border border-dashed px-3 py-2 text-sm ${pendingCardClass}`}
                       >
                         <div className='flex min-w-0 items-start justify-between gap-2'>
                           <div className='min-w-0'>
@@ -398,7 +403,7 @@ export function EvidenceConsole({
                           </div>
                           <Badge
                             variant='outline'
-                            className='shrink-0 border-amber-300/80 bg-amber-100/60 font-normal text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200'
+                            className={`shrink-0 font-normal ${pendingBadgeClass}`}
                           >
                             待存证
                           </Badge>
